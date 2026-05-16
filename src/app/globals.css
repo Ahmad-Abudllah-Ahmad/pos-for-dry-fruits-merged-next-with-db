@@ -1,26 +1,80 @@
 @import "tailwindcss";
 
+/* Design tokens. Layouts/pages apply surfaces; do not set background/color on `body`
+   so shells stay general-purpose. */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --t-bg: #f8fafc;
+  --t-elevated: #ffffff;
+  --t-muted: #f1f5f9;
+  --t-fg: #0f172a;
+  --t-fg-muted: #64748b;
+  --t-fg-subtle: #94a3b8;
+  --t-border: #e2e8f0;
+  --t-ring: #0ea5e9;
+  --t-accent: #0ea5e9;
+  --t-accent-foreground: #f0f9ff;
+  --t-nav: rgba(255, 255, 255, 0.8);
+  --t-dock: rgba(255, 255, 255, 0.72);
+  --t-font-sans: var(--font-poppins), system-ui, sans-serif;
+  --t-font-heading: var(--font-outfit), system-ui, sans-serif;
+  --t-radius-sm: 0.375rem;
+  --t-radius-md: 0.5rem;
+  --t-radius-lg: 0.75rem;
+  --t-shadow-sm: 0 1px 2px rgb(15 23 42 / 0.04);
+  --t-shadow-md: 0 4px 12px rgb(15 23 42 / 0.08);
+  --t-nav-h: 3.5rem;
+  --t-dock-safe: 5.5rem;
+}
+
+.dark {
+  color-scheme: dark;
+  --t-bg: #0c0f14;
+  --t-elevated: #12171f;
+  --t-muted: #1a1f2b;
+  --t-fg: #f1f5f9;
+  --t-fg-muted: #94a3b8;
+  --t-fg-subtle: #64748b;
+  --t-border: #2d3748;
+  --t-ring: #38bdf8;
+  --t-accent: #38bdf8;
+  --t-accent-foreground: #0c4a6e;
+  --t-nav: rgba(18, 23, 31, 0.8);
+  --t-dock: rgba(18, 23, 31, 0.72);
+  --t-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.25);
+  --t-shadow-md: 0 8px 24px rgb(0 0 0 / 0.35);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--t-bg);
+  --color-foreground: var(--t-fg);
+  --color-muted-foreground: var(--t-fg-muted);
+  --color-border: var(--t-border);
+  --color-ring: var(--t-ring);
+  --color-accent: var(--t-accent);
+  --color-accent-foreground: var(--t-accent-foreground);
+  --color-elevated: var(--t-elevated);
+  --color-muted: var(--t-muted);
+  --color-surface-nav: var(--t-nav);
+  --color-surface-dock: var(--t-dock);
+  --radius-sm: var(--t-radius-sm);
+  --radius-md: var(--t-radius-md);
+  --radius-lg: var(--t-radius-lg);
+  --shadow-sm: var(--t-shadow-sm);
+  --shadow-md: var(--t-shadow-md);
+  --font-sans: var(--t-font-sans);
+  --font-family-heading: var(--t-font-heading);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+@custom-variant dark (&:where(.dark, .dark *));
+
+html {
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+#root,
+#__next {
+  min-height: 100%;
 }
