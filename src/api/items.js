@@ -19,6 +19,19 @@ export function listItems(workspaceId, isActive) {
 
 /**
  * @param {number} workspaceId
+ * @param {{ page?: number; pageSize?: number; isActive?: boolean | null }} [filters]
+ */
+export function listItemsPage(workspaceId, filters = {}) {
+  const qs = new URLSearchParams();
+  if (filters.page != null) qs.set("page", String(filters.page));
+  if (filters.pageSize != null) qs.set("page_size", String(filters.pageSize));
+  if (filters.isActive != null) qs.set("is_active", String(filters.isActive));
+  const q = qs.toString();
+  return request(`/workspaces/${workspaceId}/items/paged${q ? `?${q}` : ""}`);
+}
+
+/**
+ * @param {number} workspaceId
  * @param {number} itemId
  * @param {Record<string, unknown>} body
  */

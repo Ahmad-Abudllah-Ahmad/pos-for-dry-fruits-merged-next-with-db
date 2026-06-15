@@ -61,6 +61,47 @@ function inputValue(v) {
   return v == null ? "" : String(v);
 }
 
+/** @param {Array<Record<string, unknown>> | null | undefined} payments */
+function sortPaymentsNewestFirst(payments) {
+  return (Array.isArray(payments) ? [...payments] : []).sort(
+    (a, b) => new Date(String(b.created_at ?? 0)).getTime() - new Date(String(a.created_at ?? 0)).getTime()
+  );
+}
+
+/** @param {unknown} value */
+function formatPaymentDate(value) {
+  if (!value) return "";
+  const date = new Date(String(value));
+  if (!Number.isFinite(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+/** @param {string | number | null | undefined} declaredTotal @param {number} computedTotal */
+function totalComparison(declaredTotal, computedTotal) {
+  const declared = numberValue(declaredTotal ?? "");
+  if (declared == null || declared <= 0) return null;
+  const diff = declared - computedTotal;
+  if (Math.abs(diff) < 0.005) {
+    return {
+      tone: "match",
+      text: `Items total matches the saved slip total: ${money(declared)}`,
+    };
+  }
+  if (diff > 0) {
+    return {
+      tone: "under",
+      text: `Items total is ${money(diff)} below the saved slip total ${money(declared)}`,
+    };
+  }
+  return {
+    tone: "over",
+    text: `Items total is ${money(Math.abs(diff))} above the saved slip total ${money(declared)}`,
+  };
+}
+
 /**
  * @param {{
  *   mode: "purchase" | "ledger";
@@ -206,15 +247,17 @@ function PurchaseModeSection({
   onFinalize,
   onAddPayment,
 }) {
-  const [supplier, setSupplier] = useState("Supplier");
+  const [supplier, setSupplier] = useState("");
+  const [declaredTotal, setDeclaredTotal] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
-  const [paymentStatus, setPaymentStatus] = useState("paid");
+  const [paymentStatus, setPaymentStatus] = useState("installments");
   const [paidAmount, setPaidAmount] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
   const [lineInputs, setLineInputs] = useState([newInputLine()]);
   const [editRows, setEditRows] = useState(/** @type {Record<string, ReturnType<typeof newLine>>} */ ({}));
 
   const purchaseItems = useMemo(() => (Array.isArray(purchase?.items) ? purchase.items : []), [purchase]);
+  const purchasePayments = useMemo(() => sortPaymentsNewestFirst(purchase?.payments), [purchase?.payments]);
   const isDraft = purchase && String(purchase.status) === "draft";
   const canEditSlip = Boolean(purchase && (isDraft || canEditCompleted));
   const canRecordPayment = Boolean(purchase && !isDraft && String(purchase.payment_status) !== "paid");
@@ -224,16 +267,15 @@ function PurchaseModeSection({
   }, [purchase?.id]);
 
   useEffect(() => {
-    setSupplier(String(purchase?.supplier_name ?? "Supplier"));
-    setPaymentMethod(String(purchase?.payment_method ?? ""));
-    setPaymentStatus(String(purchase?.payment_status ?? "paid"));
-    setPaidAmount(
-      purchase && String(purchase.status) !== "draft"
-        ? ""
-        : purchase?.paid_amount != null && Number(purchase.paid_amount) > 0
-          ? String(purchase.paid_amount)
-          : ""
+    setSupplier(String(purchase?.supplier_name ?? ""));
+    setDeclaredTotal(
+      purchase?.declared_total != null && Number(purchase.declared_total) > 0
+        ? String(purchase.declared_total)
+        : ""
     );
+    setPaymentMethod(String(purchasePayments[0]?.payment_method ?? purchase?.payment_method ?? ""));
+    setPaymentStatus(String(purchase?.payment_status ?? "paid"));
+    setPaidAmount("");
     setPaymentNote("");
     const rows = {};
     for (const item of Array.isArray(purchase?.items) ? purchase.items : []) {
@@ -246,7 +288,7 @@ function PurchaseModeSection({
       };
     }
     setEditRows(rows);
-  }, [purchase]);
+  }, [purchase, purchasePayments]);
 
   const totals = purchaseItems.reduce(
     (acc, item) => {
@@ -258,6 +300,8 @@ function PurchaseModeSection({
     },
     { items: 0, cartons: 0, grams: 0, price: 0 }
   );
+  const comparison = totalComparison(declaredTotal, totals.price);
+  const canRecordDraftPayment = Boolean(purchase && totals.price > 0 && Number(purchase.remaining_amount ?? totals.price) > 0);
 
   function buildPayload(line) {
     const itemId = Number(line.itemId);
@@ -287,18 +331,25 @@ function PurchaseModeSection({
       toast.error("Enter supplier name");
       return null;
     }
+    const headerTotal = numberValue(declaredTotal);
+    if (headerTotal == null || headerTotal <= 0) {
+      toast.error("Enter the supplier slip total");
+      return null;
+    }
     return {
       supplier_name: supplierName,
-      payment_method: paymentMethod.trim() || null,
+      declared_total: String(headerTotal),
+      payment_method: null,
       payment_status: paymentStatus,
-      paid_amount: paidAmount.trim() ? paidAmount.trim() : null,
-      payment_note: paymentNote.trim() || null,
+      paid_amount: null,
+      payment_note: null,
     };
   }
 
   async function startSlip() {
     await onStartPurchase({
-      supplier_name: "Supplier",
+      supplier_name: "",
+      declared_total: null,
       payment_method: null,
       payment_status: "installments",
       paid_amount: null,
@@ -369,6 +420,10 @@ function PurchaseModeSection({
       toast.error("Enter payment amount");
       return;
     }
+    if (amount > Number(purchase.remaining_amount ?? 0)) {
+      toast.error("Payment cannot exceed remaining balance");
+      return;
+    }
     await onAddPayment(Number(purchase.id), {
       amount: String(amount),
       payment_method: paymentMethod.trim() || null,
@@ -397,25 +452,58 @@ function PurchaseModeSection({
       detailsTitle="Slip details"
       status={purchase?.status}
       canEditRecord={canEditSlip}
-      canRecordPayment={canRecordPayment}
+      canRecordPayment={canRecordPayment || (isDraft && canRecordDraftPayment)}
+      payments={purchasePayments}
       nameLabel="Supplier"
       nameValue={supplier}
       onNameChange={setSupplier}
+      namePlaceholder="Supplier"
+      extraDetailFields={(
+        <Field label="Supplier slip total">
+          <Input
+            value={declaredTotal}
+            onChange={(e) => setDeclaredTotal(e.target.value)}
+            inputMode="decimal"
+            placeholder="Enter total supplier amount"
+            disabled={busy || !canEditSlip}
+          />
+        </Field>
+      )}
+      detailsHelperText="First save supplier name, payment status, and the supplier's full slip total. Then add line items below."
+      paymentSectionTitle={isDraft ? "Payment before finalize" : "Add installment"}
+      paymentSectionDescription={
+        isDraft
+          ? "After adding products, record how much you are paying now. For installment slips, you can keep adding more payments later."
+          : "Use this section only for the next payment. Supplier details and items stay unchanged."
+      }
       paymentMethod={paymentMethod}
       onPaymentMethodChange={setPaymentMethod}
       paymentStatus={paymentStatus}
       onPaymentStatusChange={setPaymentStatus}
+      showPaymentMethodInDetails={false}
+      showPaymentAmountInDetails={false}
+      showPaymentNoteInDetails={false}
+      paymentAmountLabel={isDraft ? "Pay now" : "Next installment"}
+      paymentAmountPlaceholder={isDraft ? "Enter amount being paid now" : "Enter next installment amount"}
+      paymentHint={
+        paymentStatus === "paid"
+          ? "For fully paid slips, record the one-time payment before finalizing, or leave it empty and finalize to mark the remaining balance as paid."
+          : "For installment slips, each payment is recorded separately and shown below."
+      }
       paidAmount={paidAmount}
       onPaidAmountChange={setPaidAmount}
       paymentNote={paymentNote}
       onPaymentNoteChange={setPaymentNote}
       saveLabel="Save details"
       onSaveDetails={saveDetails}
-      addPaymentLabel="Add payment"
+      addPaymentLabel={isDraft ? "Record payment" : "Add installment"}
       onAddPayment={addPayment}
+      showPaymentAction={canRecordPayment || (isDraft && canRecordDraftPayment)}
       canAddItems={canEditSlip}
       addItemsTitle="Add products"
       addItemsPrimaryLabel="Add to slip"
+      summaryNotice={comparison?.text ?? ""}
+      summaryNoticeTone={comparison?.tone ?? "neutral"}
       lineInputs={lineInputs}
       updateInputLine={updateInputLine}
       removeInputLine={removeInputLine}
@@ -462,7 +550,7 @@ function LedgerModeSection({
   onFinalize,
   onAddPayment,
 }) {
-  const [dealer, setDealer] = useState("Dealer");
+  const [dealer, setDealer] = useState("");
   const [dealerPhone, setDealerPhone] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("installments");
@@ -472,6 +560,7 @@ function LedgerModeSection({
   const [editRows, setEditRows] = useState(/** @type {Record<string, ReturnType<typeof newLine>>} */ ({}));
 
   const ledgerItems = useMemo(() => (Array.isArray(ledger?.items) ? ledger.items : []), [ledger]);
+  const ledgerPayments = useMemo(() => sortPaymentsNewestFirst(ledger?.payments), [ledger?.payments]);
   const isDraft = ledger && String(ledger.status) === "draft";
   const canEditLedger = Boolean(ledger && isDraft);
   const canRecordPayment = Boolean(ledger && !isDraft && String(ledger.payment_status) !== "paid");
@@ -481,9 +570,9 @@ function LedgerModeSection({
   }, [ledger?.id]);
 
   useEffect(() => {
-    setDealer(String(ledger?.dealer_name ?? "Dealer"));
+    setDealer(String(ledger?.dealer_name ?? ""));
     setDealerPhone(String(ledger?.dealer_phone ?? ""));
-    setPaymentMethod(String(ledger?.payment_method ?? ""));
+    setPaymentMethod(String(ledgerPayments[0]?.payment_method ?? ledger?.payment_method ?? ""));
     setPaymentStatus(String(ledger?.payment_status ?? "installments"));
     setPaidAmount(
       ledger && String(ledger.status) !== "draft"
@@ -492,7 +581,11 @@ function LedgerModeSection({
           ? String(ledger.paid_amount)
           : ""
     );
-    setPaymentNote(String(ledger?.note ?? ""));
+    setPaymentNote(
+      ledger && String(ledger.status) === "draft"
+        ? String(ledger?.note ?? "")
+        : ""
+    );
     const rows = {};
     for (const item of Array.isArray(ledger?.items) ? ledger.items : []) {
       rows[String(item.id)] = {
@@ -504,7 +597,7 @@ function LedgerModeSection({
       };
     }
     setEditRows(rows);
-  }, [ledger]);
+  }, [ledger, ledgerPayments]);
 
   const totals = ledgerItems.reduce(
     (acc, item) => {
@@ -562,7 +655,7 @@ function LedgerModeSection({
 
   async function startEntry() {
     await onStartLedger({
-      dealer_name: "Dealer",
+      dealer_name: "",
       dealer_phone: null,
       payment_method: null,
       payment_status: "installments",
@@ -663,9 +756,11 @@ function LedgerModeSection({
       status={ledger?.status}
       canEditRecord={canEditLedger}
       canRecordPayment={canRecordPayment}
+      payments={ledgerPayments}
       nameLabel="Dealer"
       nameValue={dealer}
       onNameChange={setDealer}
+      namePlaceholder="Dealer"
       extraNameLabel="Phone"
       extraNameValue={dealerPhone}
       onExtraNameChange={setDealerPhone}
@@ -673,6 +768,13 @@ function LedgerModeSection({
       onPaymentMethodChange={setPaymentMethod}
       paymentStatus={paymentStatus}
       onPaymentStatusChange={setPaymentStatus}
+      paymentAmountLabel={isDraft ? "Received now" : "Next installment"}
+      paymentAmountPlaceholder={isDraft ? "Optional upfront payment" : "Enter next installment amount"}
+      paymentHint={
+        isDraft
+          ? "This amount is saved with the draft and becomes the first payment once the dealer sale is finalized."
+          : "Only enter the new installment here. Earlier payments are listed below."
+      }
       paidAmount={paidAmount}
       onPaidAmountChange={setPaidAmount}
       paymentNote={paymentNote}
@@ -728,16 +830,28 @@ function ModeScaffold({
   status,
   canEditRecord,
   canRecordPayment,
+  payments = [],
   nameLabel,
   nameValue,
   onNameChange,
+  namePlaceholder = "",
   extraNameLabel,
   extraNameValue,
   onExtraNameChange,
+  extraDetailFields,
+  detailsHelperText = "",
+  paymentSectionTitle = "Payment",
+  paymentSectionDescription = "",
   paymentMethod,
   onPaymentMethodChange,
   paymentStatus,
   onPaymentStatusChange,
+  showPaymentMethodInDetails = true,
+  showPaymentAmountInDetails = true,
+  showPaymentNoteInDetails = true,
+  paymentAmountLabel = "Paid now",
+  paymentAmountPlaceholder = "",
+  paymentHint = "",
   paidAmount,
   onPaidAmountChange,
   paymentNote,
@@ -746,6 +860,7 @@ function ModeScaffold({
   onSaveDetails,
   addPaymentLabel,
   onAddPayment,
+  showPaymentAction = canRecordPayment,
   canAddItems,
   addItemsTitle,
   addItemsPrimaryLabel,
@@ -772,6 +887,8 @@ function ModeScaffold({
   totalDisplay,
   countDisplay,
   quantityDisplay,
+  summaryNotice = "",
+  summaryNoticeTone = "neutral",
   canFinalize,
   finalizeLabel,
   onFinalize,
@@ -803,6 +920,21 @@ function ModeScaffold({
             <Summary label="Quantity" value={summary.quantity} />
             <Summary label="Total" value={summary.total} />
           </div>
+          {summaryNotice && (
+            <div
+              className={`rounded-md border px-3 py-2 text-sm ${
+                summaryNoticeTone === "match"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : summaryNoticeTone === "over"
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : summaryNoticeTone === "under"
+                      ? "border-sky-200 bg-sky-50 text-sky-800"
+                      : "border-border bg-muted/20 text-muted-foreground"
+              }`}
+            >
+              {summaryNotice}
+            </div>
+          )}
 
           <div className="space-y-4 rounded-md border border-border/80 p-3">
             <div className="flex items-center justify-between gap-3">
@@ -811,21 +943,24 @@ function ModeScaffold({
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <Field label={nameLabel}>
-                <Input value={nameValue} onChange={(e) => onNameChange(e.target.value)} disabled={busy || !canEditRecord} />
+                <Input value={nameValue} onChange={(e) => onNameChange(e.target.value)} placeholder={namePlaceholder} disabled={busy || !canEditRecord} />
               </Field>
               {extraNameLabel && onExtraNameChange && (
                 <Field label={extraNameLabel}>
                   <Input value={extraNameValue ?? ""} onChange={(e) => onExtraNameChange(e.target.value)} disabled={busy || !canEditRecord} />
                 </Field>
               )}
-              <Field label="Payment method">
-                <Input
-                  value={paymentMethod}
-                  onChange={(e) => onPaymentMethodChange(e.target.value)}
-                  placeholder="Cash, bank transfer, cheque..."
-                  disabled={busy || (!canEditRecord && !canRecordPayment)}
-                />
-              </Field>
+              {extraDetailFields}
+              {showPaymentMethodInDetails && (
+                <Field label="Payment method">
+                  <Input
+                    value={paymentMethod}
+                    onChange={(e) => onPaymentMethodChange(e.target.value)}
+                    placeholder="Cash, bank transfer, cheque..."
+                    disabled={busy || (!canEditRecord && !canRecordPayment)}
+                  />
+                </Field>
+              )}
               <Field label="Status">
                 <Select value={paymentStatus} onValueChange={onPaymentStatusChange} disabled={busy || !canEditRecord}>
                   <SelectTrigger>
@@ -837,18 +972,25 @@ function ModeScaffold({
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Paid now">
-                <Input
-                  value={paidAmount}
-                  onChange={(e) => onPaidAmountChange(e.target.value)}
-                  inputMode="decimal"
-                  disabled={busy || (!canEditRecord && !canRecordPayment)}
-                />
-              </Field>
+              {showPaymentAmountInDetails && (
+                <Field label={paymentAmountLabel}>
+                  <Input
+                    value={paidAmount}
+                    onChange={(e) => onPaidAmountChange(e.target.value)}
+                    inputMode="decimal"
+                    placeholder={paymentAmountPlaceholder}
+                    disabled={busy || (!canEditRecord && !canRecordPayment)}
+                  />
+                </Field>
+              )}
             </div>
-            <Field label="Payment note">
-              <Input value={paymentNote} onChange={(e) => onPaymentNoteChange(e.target.value)} disabled={busy || (!canEditRecord && !canRecordPayment)} />
-            </Field>
+            {detailsHelperText && <p className="text-sm text-muted-foreground">{detailsHelperText}</p>}
+            {paymentHint && <p className="text-sm text-muted-foreground">{paymentHint}</p>}
+            {showPaymentNoteInDetails && (
+              <Field label="Payment note">
+                <Input value={paymentNote} onChange={(e) => onPaymentNoteChange(e.target.value)} disabled={busy || (!canEditRecord && !canRecordPayment)} />
+              </Field>
+            )}
             <div className="flex flex-wrap gap-2">
               {canEditRecord && (
                 <Button type="button" variant="outline" onClick={onSaveDetails} disabled={busy}>
@@ -856,7 +998,7 @@ function ModeScaffold({
                   {saveLabel}
                 </Button>
               )}
-              {canRecordPayment && (
+              {showPaymentAction && showPaymentMethodInDetails && showPaymentAmountInDetails && (
                 <Button type="button" onClick={onAddPayment} disabled={busy}>
                   <Check className="size-4" />
                   {addPaymentLabel}
@@ -864,6 +1006,81 @@ function ModeScaffold({
               )}
             </div>
           </div>
+
+          {!showPaymentMethodInDetails && (
+            <div className="space-y-4 rounded-md border border-border/80 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium">{paymentSectionTitle}</p>
+                <p className="text-sm text-muted-foreground">{paymentSectionDescription}</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <Field label="Payment method">
+                  <Input
+                    value={paymentMethod}
+                    onChange={(e) => onPaymentMethodChange(e.target.value)}
+                    placeholder="Cash, bank transfer, cheque..."
+                    disabled={busy || !showPaymentAction}
+                  />
+                </Field>
+                <Field label={paymentAmountLabel}>
+                  <Input
+                    value={paidAmount}
+                    onChange={(e) => onPaidAmountChange(e.target.value)}
+                    inputMode="decimal"
+                    placeholder={paymentAmountPlaceholder}
+                    disabled={busy || !showPaymentAction}
+                  />
+                </Field>
+                <Field label="Payment note">
+                  <Input
+                    value={paymentNote}
+                    onChange={(e) => onPaymentNoteChange(e.target.value)}
+                    placeholder="Optional note"
+                    disabled={busy || !showPaymentAction}
+                  />
+                </Field>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {showPaymentAction && (
+                  <Button type="button" onClick={onAddPayment} disabled={busy}>
+                    <Check className="size-4" />
+                    {addPaymentLabel}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(payments.length > 0 || canRecordPayment) && (
+            <div className="space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium">Payment activity</p>
+                <p className="text-sm text-muted-foreground">
+                  {payments.length === 0 ? "No payments recorded yet" : `${payments.length} payment${payments.length === 1 ? "" : "s"} recorded`}
+                </p>
+              </div>
+              {payments.length === 0 ? (
+                <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  This record is on installments. The first payment will appear here as soon as it is saved.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {payments.map((payment, index) => (
+                    <div key={String(payment.id ?? index)} className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border/80 bg-background p-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="font-medium tabular-nums">{money(payment.amount)}</p>
+                        <p className="text-xs text-muted-foreground">{formatPaymentDate(payment.created_at)}</p>
+                        {payment.note && <p className="text-sm text-muted-foreground">{String(payment.note)}</p>}
+                      </div>
+                      <div className="text-right text-sm text-muted-foreground">
+                        {payment.payment_method ? <p>{String(payment.payment_method)}</p> : <p>No payment method</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {canAddItems && (
             <div className="space-y-3 rounded-md border border-border/80 p-3">

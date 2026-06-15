@@ -1,39 +1,73 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Package, Store, Warehouse } from "lucide-react";
+import { ArrowRightLeft, Store, Warehouse } from "lucide-react";
 import { toast } from "sonner";
 
-import { listStock } from "@/api/inventory";
-import { getItemName } from "@/lib/item-name";
-import { money, formatWeight } from "@/lib/format";
-import { useWorkspaceStore } from "@/stores/workspace-store";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/common/card";
-import { MetricStatCard } from "@/components/common/metric-stat-card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { listItems, listStock, listStockPage, listSubledgers } from "@/api";
 import { ApiError } from "@/api/client";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/common/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/common/card";
+import { StockTablesSection } from "@/components/app/stock/StockTablesSection";
+import { StockTransferModal } from "@/components/app/stock/StockTransferModal";
+import { money } from "@/lib/format";
+import { isAdminUser } from "@/lib/roles";
+import { useAuthStore } from "@/stores/auth-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
+
+const PAGE_SIZE = 10;
+const EMPTY_PAGE = { items: [], total: 0, page: 1, page_size: PAGE_SIZE };
 
 export function UserAppDashboard() {
   const activeId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const user = useAuthStore((s) => s.user);
+  const admin = isAdminUser(user);
+
   const [shop, setShop] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
   const [wh, setWh] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
+  const [shopPageData, setShopPageData] = useState(EMPTY_PAGE);
+  const [warehousePageData, setWarehousePageData] = useState(EMPTY_PAGE);
+  const [shopPage, setShopPage] = useState(1);
+  const [warehousePage, setWarehousePage] = useState(1);
+  const [items, setItems] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
+  const [subledgers, setSubledgers] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferDirection, setTransferDirection] = useState(
+    /** @type {"warehouse_to_shop" | "shop_to_warehouse"} */ ("warehouse_to_shop")
+  );
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     if (activeId == null) {
+      setShop([]);
+      setWh([]);
+      setShopPageData(EMPTY_PAGE);
+      setWarehousePageData(EMPTY_PAGE);
+      setItems([]);
+      setSubledgers([]);
       setLoading(false);
       return;
     }
+
     setLoading(true);
     try {
-      const [s, w] = await Promise.all([
+      const tasks = [
         listStock(activeId, "shop"),
         listStock(activeId, "warehouse"),
-      ]);
-      setShop(Array.isArray(s) ? s : []);
-      setWh(Array.isArray(w) ? w : []);
+        listStockPage(activeId, { locationType: "shop", page: shopPage, pageSize: PAGE_SIZE }),
+        listStockPage(activeId, { locationType: "warehouse", page: warehousePage, pageSize: PAGE_SIZE }),
+      ];
+      if (admin) {
+        tasks.push(listItems(activeId, true), listSubledgers(activeId, { isActive: true }));
+      }
+
+      const [shopRows, warehouseRows, shopPaged, warehousePaged, itemsList, subledgersList] = await Promise.all(tasks);
+      setShop(Array.isArray(shopRows) ? shopRows : []);
+      setWh(Array.isArray(warehouseRows) ? warehouseRows : []);
+      setShopPageData(shopPaged ?? EMPTY_PAGE);
+      setWarehousePageData(warehousePaged ?? EMPTY_PAGE);
+      setItems(Array.isArray(itemsList) ? itemsList : []);
+      setSubledgers(Array.isArray(subledgersList) ? subledgersList : []);
     } catch (e) {
       if (e instanceof ApiError) {
         toast.error(e.message);
@@ -43,20 +77,14 @@ export function UserAppDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [activeId]);
+  }, [activeId, admin, shopPage, warehousePage]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const totalShop = shop.reduce(
-    (a, r) => a + parseFloat(String(r.stock_value ?? 0) || "0"),
-    0
-  );
-  const totalWh = wh.reduce(
-    (a, r) => a + parseFloat(String(r.stock_value ?? 0) || "0"),
-    0
-  );
+  const totalShop = shop.reduce((a, r) => a + parseFloat(String(r.stock_value ?? 0) || "0"), 0);
+  const totalWh = wh.reduce((a, r) => a + parseFloat(String(r.stock_value ?? 0) || "0"), 0);
 
   if (activeId == null) {
     return (
@@ -81,88 +109,84 @@ export function UserAppDashboard() {
           Shop and warehouse balances for the selected workspace.
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <MetricStatCard
-          label="Shop stock value"
-          value={loading ? "—" : money(totalShop)}
-          icon={Store}
-          loading={loading}
-        />
-        <MetricStatCard
-          label="Warehouse value"
-          value={loading ? "—" : money(totalWh)}
-          icon={Warehouse}
-          loading={loading}
-        />
-      </div>
-      <Tabs defaultValue="shop" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="shop" className="gap-1.5">
-            <Store className="size-3.5" />
-            Shop
-          </TabsTrigger>
-          <TabsTrigger value="warehouse" className="gap-1.5">
-            <Warehouse className="size-3.5" />
-            Warehouse
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="shop">
-          <StockTable rows={shop} loading={loading} locationLabel="shop" />
-        </TabsContent>
-        <TabsContent value="warehouse">
-          <StockTable rows={wh} loading={loading} locationLabel="warehouse" />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
 
-/**
- * @param {{ rows: Array<Record<string, unknown>>; loading: boolean; locationLabel: string }} p
- */
-function StockTable({ rows, loading, locationLabel }) {
-  if (loading) {
-    return (
-      <div className="mt-2 space-y-2">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-32 w-full" />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Shop stock value</CardTitle>
+              <p className="text-2xl font-semibold tabular-nums tracking-tight [font-family:var(--font-outfit),system-ui,sans-serif]">
+                {loading ? "-" : money(totalShop)}
+              </p>
+            </div>
+            <Store className="size-4 text-muted-foreground" />
+          </CardHeader>
+          {admin && (
+            <div className="px-5 pb-5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setTransferDirection("warehouse_to_shop");
+                  setTransferOpen(true);
+                }}
+              >
+                <ArrowRightLeft className="size-4" />
+                Transfer to shop
+              </Button>
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
+            <div className="space-y-1">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Warehouse value</CardTitle>
+              <p className="text-2xl font-semibold tabular-nums tracking-tight [font-family:var(--font-outfit),system-ui,sans-serif]">
+                {loading ? "-" : money(totalWh)}
+              </p>
+            </div>
+            <Warehouse className="size-4 text-muted-foreground" />
+          </CardHeader>
+          {admin && (
+            <div className="px-5 pb-5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setTransferDirection("shop_to_warehouse");
+                  setTransferOpen(true);
+                }}
+              >
+                <ArrowRightLeft className="size-4" />
+                Transfer to warehouse
+              </Button>
+            </div>
+          )}
+        </Card>
       </div>
-    );
-  }
-  if (rows.length === 0) {
-    return (
-      <Card className="mt-2">
-        <CardContent className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-          <Package className="size-5" />
-          No stock lines in {locationLabel} yet.
-        </CardContent>
-      </Card>
-    );
-  }
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Item</TableHead>
-          <TableHead className="text-right">Qty</TableHead>
-          <TableHead className="text-right">Avg cost</TableHead>
-          <TableHead className="text-right">Value</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((r) => (
-          <TableRow key={`${r.item_id}-${r.location_id}`}>
-            <TableCell className="font-medium">{getItemName(/** @type {Record<string, string>} */ (r.item_name))}</TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatWeight(Number(r.quantity_grams ?? 0), "gram")}
-            </TableCell>
-            <TableCell className="text-right tabular-nums text-muted-foreground">
-              {money(r.average_unit_cost)}
-            </TableCell>
-            <TableCell className="text-right font-medium tabular-nums">{money(r.stock_value)}</TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+
+      <StockTablesSection
+        loading={loading}
+        shopPageData={shopPageData}
+        warehousePageData={warehousePageData}
+        shopPage={shopPage}
+        warehousePage={warehousePage}
+        onShopPageChange={setShopPage}
+        onWarehousePageChange={setWarehousePage}
+      />
+
+      {admin && (
+        <StockTransferModal
+          open={transferOpen}
+          onOpenChange={setTransferOpen}
+          workspaceId={activeId}
+          items={items}
+          subledgers={subledgers}
+          initialDirection={transferDirection}
+          onSuccess={load}
+        />
+      )}
+    </div>
   );
 }

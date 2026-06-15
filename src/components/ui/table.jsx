@@ -2,9 +2,9 @@ import { cn } from "@/lib/utils/cn";
 
 function Table({ className, ...props }) {
   return (
-    <div className="w-full overflow-x-auto rounded-lg border border-border">
+    <div className="w-full overflow-x-auto rounded-xl border border-border bg-elevated">
       <table
-        className={cn("w-full caption-bottom text-left text-sm", className)}
+        className={cn("w-full border-collapse caption-bottom text-left text-sm", className)}
         {...props}
       />
     </div>
@@ -12,14 +12,14 @@ function Table({ className, ...props }) {
 }
 
 function TableHeader({ className, ...props }) {
-  return <thead className={cn("[&_tr]:border-b", className)} {...props} />;
+  return <thead className={cn("bg-muted/55 [&_tr]:border-b [&_tr]:border-border", className)} {...props} />;
 }
 
 function TableRow({ className, ...props }) {
   return (
     <tr
       className={cn(
-        "border-b border-border/80 transition-colors hover:bg-muted/40",
+        "border-b border-border transition-colors hover:bg-muted/30",
         className
       )}
       {...props}
@@ -31,7 +31,7 @@ function TableHead({ className, ...props }) {
   return (
     <th
       className={cn(
-        "h-10 px-3 text-left align-middle text-xs font-medium text-muted-foreground",
+        "h-11 border-r border-border px-3 text-left align-middle text-xs font-semibold text-muted-foreground last:border-r-0",
         className
       )}
       {...props}
@@ -40,7 +40,7 @@ function TableHead({ className, ...props }) {
 }
 
 function TableCell({ className, ...props }) {
-  return <td className={cn("p-3 align-middle", className)} {...props} />;
+  return <td className={cn("border-r border-border p-3 align-middle last:border-r-0", className)} {...props} />;
 }
 
 function TableBody({ className, ...props }) {
