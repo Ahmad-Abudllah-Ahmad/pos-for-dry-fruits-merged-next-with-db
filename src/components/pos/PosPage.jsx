@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { HandCoins, PackagePlus, Receipt, Trash2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -30,10 +30,12 @@ import {
   getPurchase,
   getSale,
   listLedger,
+  listEmployees,
   listExpenses,
   listItems,
   listPurchases,
   listSales,
+  listStock,
   listSubledgers,
   updateLedger,
   updateLedgerItem,
@@ -47,8 +49,9 @@ import { formatWeight, money } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { Button } from "@/components/common/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/common/card";
+import { Card, CardContent } from "@/components/common/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BillCard } from "@/components/pos/BillCard";
 import { ExpenseEntryCard } from "@/components/pos/ExpenseEntryCard";
 import { SupplierPurchaseCard } from "@/components/pos/SupplierPurchaseCard";
@@ -59,24 +62,40 @@ export function PosPage() {
   const user = useAuthStore((s) => s.user);
   const [items, setItems] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
   const [subledgers, setSubledgers] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
+  const [shopStock, setShopStock] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
+  const [warehouseStock, setWarehouseStock] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
   const [sale, setSale] = useState(/** @type {Record<string, unknown> | null} */ (null));
   const [purchase, setPurchase] = useState(/** @type {Record<string, unknown> | null} */ (null));
   const [ledger, setLedger] = useState(/** @type {Record<string, unknown> | null} */ (null));
   const [expense, setExpense] = useState(/** @type {Record<string, unknown> | null} */ (null));
-  const [stockEntryMode, setStockEntryMode] = useState(/** @type {"purchase" | "ledger"} */ ("purchase"));
+  const [, setStockEntryMode] = useState(/** @type {"purchase" | "ledger"} */ ("purchase"));
   const [busy, setBusy] = useState(false);
   const [recent, setRecent] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
   const [purchases, setPurchases] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
   const [ledgers, setLedgers] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
   const [expenses, setExpenses] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
+  const [employees, setEmployees] = useState(/** @type {Array<Record<string, unknown>>} */ ([]));
   const isAdmin = user?.role === "Admin";
 
   const loadItems = useCallback(async () => {
-    if (wid == null) return;
+    if (wid == null) {
+      setItems([]);
+      setSubledgers([]);
+      setShopStock([]);
+      setWarehouseStock([]);
+      return;
+    }
     try {
-      const [list, variants] = await Promise.all([listItems(wid, null), listSubledgers(wid)]);
+      const [list, variants, shopRows, warehouseRows] = await Promise.all([
+        listItems(wid, null),
+        listSubledgers(wid),
+        listStock(wid, "shop"),
+        listStock(wid, "warehouse"),
+      ]);
       setItems(Array.isArray(list) ? list : []);
       setSubledgers(Array.isArray(variants) ? variants : []);
+      setShopStock(Array.isArray(shopRows) ? shopRows : []);
+      setWarehouseStock(Array.isArray(warehouseRows) ? warehouseRows : []);
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     }
@@ -85,11 +104,21 @@ export function PosPage() {
   const loadRecent = useCallback(async () => {
     if (wid == null) return;
     try {
-      const [list, purchaseList, ledgerList, expenseList] = await Promise.all([
+      if (!isAdmin) {
+        const list = await listSales(wid);
+        setRecent((Array.isArray(list) ? list : []).slice(0, 12));
+        setPurchases([]);
+        setLedgers([]);
+        setExpenses([]);
+        setEmployees([]);
+        return;
+      }
+      const [list, purchaseList, ledgerList, expenseList, employeeList] = await Promise.all([
         listSales(wid),
         listPurchases(wid),
-        isAdmin ? listLedger(wid) : Promise.resolve([]),
-        isAdmin ? listExpenses(wid) : Promise.resolve([]),
+        listLedger(wid),
+        listExpenses(wid),
+        listEmployees(wid),
       ]);
       const arr = Array.isArray(list) ? list : [];
       const purchaseArr = Array.isArray(purchaseList) ? purchaseList : [];
@@ -99,6 +128,7 @@ export function PosPage() {
       setPurchases(purchaseArr.slice(0, 12));
       setLedgers(ledgerArr.slice(0, 12));
       setExpenses(expenseArr.slice(0, 12));
+      setEmployees(Array.isArray(employeeList) ? employeeList : []);
     } catch {
       /* ignore */
     }
@@ -138,6 +168,7 @@ export function PosPage() {
       }
       setSale(updated);
       loadRecent();
+      loadItems();
       toast.success(payloads.length === 1 ? "Line added" : "Lines added");
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -157,6 +188,7 @@ export function PosPage() {
       const s = await updateSaleItem(wid, Number(sale.id), saleItemId, payload);
       setSale(s);
       loadRecent();
+      loadItems();
       toast.success("Line updated");
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -173,6 +205,7 @@ export function PosPage() {
       const s = await deleteSaleItem(wid, Number(sale.id), saleItemId);
       setSale(s);
       loadRecent();
+      loadItems();
       toast.success("Line removed");
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -210,6 +243,7 @@ export function PosPage() {
       setSale(s);
       toast.success("Bill completed");
       loadRecent();
+      loadItems();
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
     } finally {
@@ -608,6 +642,7 @@ export function PosPage() {
       await deleteSale(wid, saleId);
       if (Number(sale?.id) === saleId) setSale(null);
       await loadRecent();
+      await loadItems();
       toast.success("Bill deleted");
     } catch (e) {
       if (e instanceof ApiError) toast.error(e.message);
@@ -626,301 +661,477 @@ export function PosPage() {
     );
   }
 
+  const salesTerminal = (
+    <BillCard
+      sale={sale}
+      items={items}
+      subledgers={subledgers}
+      shopStock={shopStock}
+      warehouseStock={warehouseStock}
+      busy={busy}
+      canEditCompleted={isAdmin}
+      onStartSale={startSale}
+      onAddItems={addLines}
+      onUpdateItem={editLine}
+      onDeleteItem={removeLine}
+      onApplyDiscount={applyDiscount}
+      onFinalize={pay}
+    />
+  );
+
+  if (!isAdmin) {
+    return (
+      <div className="w-full space-y-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Sales terminal</p>
+            <h1 className="text-2xl font-semibold [font-family:var(--font-outfit),system-ui,sans-serif]">
+              Create bills
+            </h1>
+            <p className="max-w-3xl text-sm text-muted-foreground">
+              Select visible items and variants from the left, then edit quantity and price in the receipt.
+            </p>
+          </div>
+          <div className="w-full text-sm md:w-40">
+            <PosStat label="Recent bills" value={recent.length} />
+          </div>
+        </div>
+        {salesTerminal}
+      </div>
+    );
+  }
+
+  const supplierTab = (
+    <SupplierPurchaseCard
+      mode="purchase"
+      onModeChange={setStockEntryMode}
+      showModeSwitch={false}
+      purchase={purchase}
+      ledger={ledger}
+      items={items}
+      subledgers={subledgers}
+      busy={busy}
+      canEditCompleted={isAdmin}
+      onStartPurchase={startPurchase}
+      onUpdatePurchase={editPurchaseDetails}
+      onAddItems={addPurchaseLines}
+      onUpdateItem={editPurchaseLine}
+      onDeleteItem={removePurchaseLine}
+      onFinalize={completePurchaseSlip}
+      onAddPayment={postPurchasePayment}
+      onStartLedger={startLedgerEntry}
+      onUpdateLedger={editLedgerDetails}
+      onAddLedgerItems={addLedgerLines}
+      onUpdateLedgerItem={editLedgerLine}
+      onDeleteLedgerItem={removeLedgerLine}
+      onFinalizeLedger={completeLedgerEntry}
+      onAddLedgerPayment={postLedgerPayment}
+    />
+  );
+
+  const ledgerTab = (
+    <SupplierPurchaseCard
+      mode="ledger"
+      onModeChange={setStockEntryMode}
+      showModeSwitch={false}
+      purchase={purchase}
+      ledger={ledger}
+      items={items}
+      subledgers={subledgers}
+      busy={busy}
+      canEditCompleted={isAdmin}
+      onStartPurchase={startPurchase}
+      onUpdatePurchase={editPurchaseDetails}
+      onAddItems={addPurchaseLines}
+      onUpdateItem={editPurchaseLine}
+      onDeleteItem={removePurchaseLine}
+      onFinalize={completePurchaseSlip}
+      onAddPayment={postPurchasePayment}
+      onStartLedger={startLedgerEntry}
+      onUpdateLedger={editLedgerDetails}
+      onAddLedgerItems={addLedgerLines}
+      onUpdateLedgerItem={editLedgerLine}
+      onDeleteLedgerItem={removeLedgerLine}
+      onFinalizeLedger={completeLedgerEntry}
+      onAddLedgerPayment={postLedgerPayment}
+    />
+  );
+
   return (
-    <div className="grid w-full gap-5 xl:grid-cols-[minmax(0,1fr)_390px] 2xl:grid-cols-[minmax(0,1fr)_430px]">
-      <div className="min-w-0 space-y-4">
-        <div>
+    <div className="w-full space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">POS workspace</p>
           <h1 className="text-2xl font-semibold [font-family:var(--font-outfit),system-ui,sans-serif]">
             Point of sale
           </h1>
-          <p className="text-sm text-muted-foreground">Draft a bill, add lines, then finalize to post stock from shop.</p>
+          <p className="max-w-3xl text-sm text-muted-foreground">
+            Sales, supplier stock, dealer credit, and expenses.
+          </p>
         </div>
-        <BillCard
-          sale={sale}
-          items={items}
-          subledgers={subledgers}
-          busy={busy}
-          canEditCompleted={isAdmin}
-          onStartSale={startSale}
-          onAddItems={addLines}
-          onUpdateItem={editLine}
-          onDeleteItem={removeLine}
-          onApplyDiscount={applyDiscount}
-          onFinalize={pay}
-        />
-        <SupplierPurchaseCard
-          mode={stockEntryMode}
-          onModeChange={setStockEntryMode}
-          purchase={purchase}
-          ledger={ledger}
-          items={items}
-          subledgers={subledgers}
-          busy={busy}
-          canEditCompleted={isAdmin}
-          onStartPurchase={startPurchase}
-          onUpdatePurchase={editPurchaseDetails}
-          onAddItems={addPurchaseLines}
-          onUpdateItem={editPurchaseLine}
-          onDeleteItem={removePurchaseLine}
-          onFinalize={completePurchaseSlip}
-          onAddPayment={postPurchasePayment}
-          onStartLedger={startLedgerEntry}
-          onUpdateLedger={editLedgerDetails}
-          onAddLedgerItems={addLedgerLines}
-          onUpdateLedgerItem={editLedgerLine}
-          onDeleteLedgerItem={removeLedgerLine}
-          onFinalizeLedger={completeLedgerEntry}
-          onAddLedgerPayment={postLedgerPayment}
-        />
-        {isAdmin && (
-          <ExpenseEntryCard
-            expense={expense}
-            busy={busy}
-            canEditCompleted={isAdmin}
-            onStartExpense={startExpenseEntry}
-            onUpdateExpense={editExpenseEntry}
-            onFinalize={completeExpenseEntry}
+        <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4 md:min-w-[520px]">
+          <PosStat label="Bills" value={recent.length} />
+          <PosStat label="Supplier slips" value={purchases.length} />
+          {isAdmin && <PosStat label="Dealer ledgers" value={ledgers.length} />}
+          {isAdmin && <PosStat label="Expenses" value={expenses.length} />}
+        </div>
+      </div>
+
+      <Tabs defaultValue="sales" className="w-full">
+        <TabsList className="grid h-auto w-full grid-cols-2 justify-stretch gap-1 rounded-lg border border-border bg-muted/70 p-1 md:grid-cols-4">
+          <FeatureTab value="sales" icon={Receipt} label="Sales" detail="Bills" />
+          <FeatureTab value="supplier" icon={PackagePlus} label="Supplier" detail="Stock in" />
+          {isAdmin && <FeatureTab value="ledger" icon={HandCoins} label="Dealer ledger" detail="Credit sale" />}
+          {isAdmin && <FeatureTab value="expenses" icon={Wallet} label="Expenses" detail="Admin" />}
+        </TabsList>
+
+        <TabsContent value="sales">
+          <FeatureWorkspace
+            main={salesTerminal}
+            side={(
+              <BillsHistory
+                rows={recent}
+                busy={busy}
+                isAdmin={isAdmin}
+                onOpen={openSale}
+                onDelete={removeDraftSale}
+              />
+            )}
           />
+        </TabsContent>
+
+        <TabsContent value="supplier">
+          <FeatureWorkspace
+            main={supplierTab}
+            side={(
+              <SupplierHistory
+                rows={purchases}
+                busy={busy}
+                isAdmin={isAdmin}
+                onOpen={openPurchase}
+                onDelete={removeDraftPurchase}
+              />
+            )}
+          />
+        </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="ledger">
+            <FeatureWorkspace
+              main={ledgerTab}
+              side={(
+                <LedgerHistory
+                  rows={ledgers}
+                  busy={busy}
+                  onOpen={openLedgerEntry}
+                  onDelete={removeDraftLedgerEntry}
+                />
+              )}
+            />
+          </TabsContent>
+        )}
+
+        {isAdmin && (
+          <TabsContent value="expenses">
+            <FeatureWorkspace
+              main={(
+                <ExpenseEntryCard
+                  expense={expense}
+                  employees={employees}
+                  busy={busy}
+                  canEditCompleted={isAdmin}
+                  onStartExpense={startExpenseEntry}
+                  onUpdateExpense={editExpenseEntry}
+                  onFinalize={completeExpenseEntry}
+                />
+              )}
+              side={(
+                <ExpenseHistory
+                  rows={expenses}
+                  busy={busy}
+                  onOpen={openExpense}
+                  onDelete={removeExpenseEntry}
+                />
+              )}
+            />
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
+  );
+}
+
+function PosStat({ label, value }) {
+  return (
+    <div className="rounded-md border border-border bg-elevated px-3 py-2 shadow-sm">
+      <p className="truncate text-xs text-muted-foreground">{label}</p>
+      <p className="font-semibold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+function FeatureTab({ value, icon: Icon, label, detail }) {
+  return (
+    <TabsTrigger
+      value={value}
+      className="min-h-14 min-w-0 justify-start gap-3 px-3 text-left data-[state=active]:bg-foreground data-[state=active]:text-background"
+    >
+      <Icon className="size-4 shrink-0" />
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold">{label}</span>
+        <span className="block truncate text-xs font-normal opacity-70">{detail}</span>
+      </span>
+    </TabsTrigger>
+  );
+}
+
+function FeatureWorkspace({ main, side }) {
+  return (
+    <div className="grid w-full gap-5 xl:grid-cols-[minmax(0,1fr)_390px] 2xl:grid-cols-[minmax(0,1fr)_430px]">
+      <div className="min-w-0">{main}</div>
+      <div className="min-w-0 xl:sticky xl:top-20 xl:self-start">{side}</div>
+    </div>
+  );
+}
+
+function SlipSidePanel({ variant, title, hint, emptyText, emptyHint, isEmpty, children }) {
+  return (
+    <div className={`pos-slip-panel pos-slip-panel--${variant}`}>
+      <div className="pos-slip-panel-header">
+        <p className="pos-slip-panel-title">{title}</p>
+        {hint && <p className="pos-slip-panel-hint">{hint}</p>}
+      </div>
+      <div className="pos-slip-panel-body">
+        {isEmpty ? (
+          <div className="pos-slip-empty">
+            <p className="pos-slip-empty-title">{emptyText}</p>
+            <p className="pos-slip-empty-hint">{emptyHint}</p>
+          </div>
+        ) : (
+          children
         )}
       </div>
-      <div className="min-w-0 space-y-4 xl:sticky xl:top-20 xl:self-start">
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle>Bills</CardTitle>
-          <CardDescription>{isAdmin ? "Open any bill; admins can also edit or delete completed bills" : "Open any bill; only drafts can be changed or deleted"}</CardDescription>
-        </CardHeader>
-        <CardContent className="max-h-[40vh] space-y-2 overflow-y-auto pr-3 text-sm">
-          {recent.length === 0 && <p className="text-muted-foreground">No bills yet.</p>}
-          {recent.map((s) => (
-            <div
-              key={s.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => openSale(Number(s.id))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") openSale(Number(s.id));
-              }}
-              className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border border-border/80 px-2 py-2 text-left hover:bg-muted/60"
-            >
-              <span className="font-medium">#{s.id}</span>
-              <Badge className="min-w-0 justify-center truncate" variant={String(s.status) === "completed" ? "info" : "default"}>
-                {String(s.status)}
+    </div>
+  );
+}
+
+function BillsHistory({ rows, busy, isAdmin, onOpen, onDelete }) {
+  return (
+    <SlipSidePanel
+      variant="sales"
+      title="Bills history"
+      hint="Tap a bill to open or continue a draft"
+      emptyText="No bills yet"
+      emptyHint="Start a new bill from the sales terminal to see it here."
+      isEmpty={rows.length === 0}
+    >
+      {rows.map((s) => (
+        <div
+          key={s.id}
+          role="button"
+          tabIndex={0}
+          onClick={() => onOpen(Number(s.id))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") onOpen(Number(s.id));
+          }}
+          className="pos-slip-record"
+        >
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+            <span className="font-semibold">#{s.id}</span>
+            <Badge className="min-w-0 justify-center truncate" variant={String(s.status) === "completed" ? "info" : "default"}>
+              {String(s.status)}
+            </Badge>
+            {String(s.status) === "draft" || isAdmin ? (
+              <DeleteButton busy={busy} label={`Delete bill ${s.id}`} onClick={() => onDelete(Number(s.id))} />
+            ) : (
+              <span className="h-8 w-8" />
+            )}
+          </div>
+          <p className="text-right text-lg font-semibold tabular-nums [font-family:var(--font-outfit),system-ui,sans-serif]">
+            {money(s.total_amount)}
+          </p>
+        </div>
+      ))}
+    </SlipSidePanel>
+  );
+}
+
+function SupplierHistory({ rows, busy, isAdmin, onOpen, onDelete }) {
+  return (
+    <SlipSidePanel
+      variant="supplier"
+      title="Supplier slips"
+      hint="Tap a slip to open · drafts can be edited"
+      emptyText="No slips yet"
+      emptyHint="Create a supplier slip to record incoming stock and payments."
+      isEmpty={rows.length === 0}
+    >
+      {rows.map((p) => {
+        const purchaseItems = Array.isArray(p.items) ? p.items : [];
+        const grams = purchaseItems.reduce((sum, item) => sum + Number(item.total_weight_grams ?? 0), 0);
+        return (
+          <div
+            key={p.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpen(Number(p.id))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") onOpen(Number(p.id));
+            }}
+            className="pos-slip-record"
+          >
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+              <span className="font-semibold">#{p.id}</span>
+              <Badge className="min-w-0 justify-center truncate" variant={String(p.status) === "completed" ? "info" : "default"}>
+                {String(p.status)}
               </Badge>
-              <span className="font-medium tabular-nums">{money(s.total_amount)}</span>
-              {String(s.status) === "draft" || isAdmin ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="iconSm"
-                  disabled={busy}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeDraftSale(Number(s.id));
-                  }}
-                  aria-label={`Delete bill ${s.id}`}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+              {String(p.status) === "draft" || isAdmin ? (
+                <DeleteButton busy={busy} label={`Delete supplier slip ${p.id}`} onClick={() => onDelete(Number(p.id))} />
               ) : (
                 <span className="h-8 w-8" />
               )}
             </div>
-          ))}
-        </CardContent>
-      </Card>
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle>Supplier slips</CardTitle>
-          <CardDescription>{isAdmin ? "Open a slip; admins can also edit or delete completed slips" : "Open a slip; drafts can be changed or deleted"}</CardDescription>
-        </CardHeader>
-        <CardContent className="max-h-[40vh] space-y-2 overflow-y-auto pr-3 text-sm">
-          {purchases.length === 0 && <p className="text-muted-foreground">No supplier slips yet.</p>}
-          {purchases.map((p) => {
-            const purchaseItems = Array.isArray(p.items) ? p.items : [];
-            const grams = purchaseItems.reduce((sum, item) => sum + Number(item.total_weight_grams ?? 0), 0);
-            return (
-              <div
-                key={p.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => openPurchase(Number(p.id))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") openPurchase(Number(p.id));
-                }}
-                className="space-y-2 rounded-md border border-border/80 px-2 py-2 text-left hover:bg-muted/60"
-              >
-                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
-                  <span className="font-medium">#{p.id}</span>
-                  <Badge className="min-w-0 justify-center truncate" variant={String(p.status) === "completed" ? "info" : "default"}>
-                    {String(p.status)}
-                  </Badge>
-                  {String(p.status) === "draft" || isAdmin ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="iconSm"
-                      disabled={busy}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeDraftPurchase(Number(p.id));
-                      }}
-                      aria-label={`Delete supplier slip ${p.id}`}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  ) : (
-                    <span className="h-8 w-8" />
-                  )}
-                </div>
-                <div className="truncate text-muted-foreground">{String(p.supplier_name)}</div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                  <span>{formatWeight(grams, "kg")}</span>
-                  <span className="text-right font-medium text-foreground">{money(p.total_amount)}</span>
-                  <span>Paid {money(p.paid_amount)}</span>
-                  <span className="text-right">Left {money(p.remaining_amount)}</span>
-                </div>
-                {String(p.payment_status) !== "paid" && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openPurchase(Number(p.id));
-                    }}
-                  >
-                    Add payment
-                  </Button>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
-      {isAdmin && (
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle>Dealer sale ledgers</CardTitle>
-            <CardDescription>Track loaded items, outstanding balance, and any later installments from dealers.</CardDescription>
-          </CardHeader>
-          <CardContent className="max-h-[40vh] space-y-2 overflow-y-auto pr-3 text-sm">
-            {ledgers.length === 0 && <p className="text-muted-foreground">No dealer sale ledgers yet.</p>}
-            {ledgers.map((entry) => {
-              const ledgerItems = Array.isArray(entry.items) ? entry.items : [];
-              const grams = ledgerItems.reduce((sum, item) => sum + Number(item.total_weight_grams ?? 0), 0);
-              return (
-                <div
-                  key={entry.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openLedgerEntry(Number(entry.id))}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") openLedgerEntry(Number(entry.id));
-                  }}
-                  className="space-y-2 rounded-md border border-border/80 px-2 py-2 text-left hover:bg-muted/60"
-                >
-                  <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
-                    <span className="font-medium">#{entry.id}</span>
-                    <Badge className="min-w-0 justify-center truncate" variant={String(entry.status) === "completed" ? "info" : "default"}>
-                      {String(entry.status)}
-                    </Badge>
-                    {String(entry.status) === "draft" ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="iconSm"
-                        disabled={busy}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeDraftLedgerEntry(Number(entry.id));
-                        }}
-                        aria-label={`Delete dealer ledger ${entry.id}`}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    ) : (
-                      <span className="h-8 w-8" />
-                    )}
-                  </div>
-                  <div className="truncate text-muted-foreground">{String(entry.dealer_name)}</div>
-                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                    <span>{formatWeight(grams, "kg")}</span>
-                    <span className="text-right font-medium text-foreground">{money(entry.total_amount)}</span>
-                    <span>Received {money(entry.paid_amount)}</span>
-                    <span className="text-right">Left {money(entry.remaining_amount)}</span>
-                  </div>
-                  {String(entry.payment_status) !== "paid" && String(entry.status) === "completed" && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openLedgerEntry(Number(entry.id));
-                      }}
-                    >
-                      Add installment
-                    </Button>
-                  )}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-      {isAdmin && (
-        <Card className="overflow-hidden">
-          <CardHeader>
-            <CardTitle>Expense entries</CardTitle>
-            <CardDescription>Track electricity bills, wages, rent, and other operating costs.</CardDescription>
-          </CardHeader>
-          <CardContent className="max-h-[40vh] space-y-2 overflow-y-auto pr-3 text-sm">
-            {expenses.length === 0 && <p className="text-muted-foreground">No expense entries yet.</p>}
-            {expenses.map((entry) => (
-              <div
-                key={entry.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => openExpense(Number(entry.id))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") openExpense(Number(entry.id));
-                }}
-                className="space-y-2 rounded-md border border-border/80 px-2 py-2 text-left hover:bg-muted/60"
-              >
-                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
-                  <span className="font-medium">#{entry.id}</span>
-                  <Badge className="min-w-0 justify-center truncate" variant={String(entry.status) === "completed" ? "info" : "default"}>
-                    {String(entry.status)}
-                  </Badge>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="iconSm"
-                    disabled={busy}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      removeExpenseEntry(Number(entry.id));
-                    }}
-                    aria-label={`Delete expense ${entry.id}`}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-                <div className="truncate font-medium">{String(entry.title)}</div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                  <span className="truncate capitalize">{String(entry.category).replaceAll("_", " ")}</span>
-                  <span className="text-right font-medium text-foreground">{money(entry.amount)}</span>
-                  <span>{String(entry.expense_date)}</span>
-                  <span className="truncate text-right">{String(entry.payment_method || "No method")}</span>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-      </div>
-    </div>
+            <p className="truncate font-medium">{String(p.supplier_name) || "Unnamed supplier"}</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <span className="text-muted-foreground">{formatWeight(grams, "kg")}</span>
+              <span className="text-right font-semibold tabular-nums">{money(p.total_amount)}</span>
+              <span className="text-muted-foreground">Paid {money(p.paid_amount)}</span>
+              <span className="text-right text-muted-foreground">Due {money(p.remaining_amount)}</span>
+            </div>
+            {String(p.payment_status) !== "paid" && (
+              <HistoryAction onClick={() => onOpen(Number(p.id))}>Add payment</HistoryAction>
+            )}
+          </div>
+        );
+      })}
+    </SlipSidePanel>
+  );
+}
+
+function LedgerHistory({ rows, busy, onOpen, onDelete }) {
+  return (
+    <SlipSidePanel
+      variant="ledger"
+      title="Dealer ledgers"
+      hint="Credit sales to outside dealers"
+      emptyText="No ledgers yet"
+      emptyHint="Start a ledger when loading stock for a dealer on credit."
+      isEmpty={rows.length === 0}
+    >
+      {rows.map((entry) => {
+        const ledgerItems = Array.isArray(entry.items) ? entry.items : [];
+        const grams = ledgerItems.reduce((sum, item) => sum + Number(item.total_weight_grams ?? 0), 0);
+        return (
+          <div
+            key={entry.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpen(Number(entry.id))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") onOpen(Number(entry.id));
+            }}
+            className="pos-slip-record"
+          >
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+              <span className="font-semibold">#{entry.id}</span>
+              <Badge className="min-w-0 justify-center truncate" variant={String(entry.status) === "completed" ? "info" : "default"}>
+                {String(entry.status)}
+              </Badge>
+              {String(entry.status) === "draft" ? (
+                <DeleteButton busy={busy} label={`Delete dealer ledger ${entry.id}`} onClick={() => onDelete(Number(entry.id))} />
+              ) : (
+                <span className="h-8 w-8" />
+              )}
+            </div>
+            <p className="truncate font-medium">{String(entry.dealer_name) || "Unnamed dealer"}</p>
+            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+              <span className="text-muted-foreground">{formatWeight(grams, "kg")}</span>
+              <span className="text-right font-semibold tabular-nums">{money(entry.total_amount)}</span>
+              <span className="text-muted-foreground">Received {money(entry.paid_amount)}</span>
+              <span className="text-right text-muted-foreground">Due {money(entry.remaining_amount)}</span>
+            </div>
+            {String(entry.payment_status) !== "paid" && String(entry.status) === "completed" && (
+              <HistoryAction onClick={() => onOpen(Number(entry.id))}>Add installment</HistoryAction>
+            )}
+          </div>
+        );
+      })}
+    </SlipSidePanel>
+  );
+}
+
+function ExpenseHistory({ rows, busy, onOpen, onDelete }) {
+  return (
+    <SlipSidePanel
+      variant="expense"
+      title="Expenses"
+      hint="Operating costs for this shop"
+      emptyText="No expenses yet"
+      emptyHint="Record wages, rent, utilities, and other costs."
+      isEmpty={rows.length === 0}
+    >
+      {rows.map((entry) => (
+        <div
+          key={entry.id}
+          role="button"
+          tabIndex={0}
+          onClick={() => onOpen(Number(entry.id))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") onOpen(Number(entry.id));
+          }}
+          className="pos-slip-record"
+        >
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+            <span className="font-semibold">#{entry.id}</span>
+            <Badge className="min-w-0 justify-center truncate" variant={String(entry.status) === "completed" ? "info" : "default"}>
+              {String(entry.status)}
+            </Badge>
+            <DeleteButton busy={busy} label={`Delete expense ${entry.id}`} onClick={() => onDelete(Number(entry.id))} />
+          </div>
+          <p className="truncate font-medium">{String(entry.title)}</p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <span className="truncate capitalize text-muted-foreground">{String(entry.category).replaceAll("_", " ")}</span>
+            <span className="text-right font-semibold tabular-nums">{money(entry.amount)}</span>
+            <span className="text-muted-foreground">{String(entry.expense_date)}</span>
+            <span className="truncate text-right text-muted-foreground">{String(entry.payment_method || "—")}</span>
+          </div>
+        </div>
+      ))}
+    </SlipSidePanel>
+  );
+}
+
+function DeleteButton({ busy, label, onClick }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="iconSm"
+      disabled={busy}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={label}
+    >
+      <Trash2 className="size-4" />
+    </Button>
+  );
+}
+
+function HistoryAction({ onClick, children }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="w-full"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      {children}
+    </Button>
   );
 }

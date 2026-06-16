@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Trash2 } from "lucide-react";
+import { PenNewSquareBoldDuotoneIcon, TrashBinTrashBoldDuotoneIcon } from "@/components/icons";
 import { toast } from "sonner";
 
 import { deleteItem, deleteSubledger } from "@/api";
@@ -110,10 +110,10 @@ export function ItemsTablesSection({
                       <TableCell>
                         <div className="flex items-center justify-center gap-2">
                           <Button variant="outline" size="iconSm" onClick={() => onEditItem(item)} aria-label="Edit main item">
-                            <Pencil />
+                            <PenNewSquareBoldDuotoneIcon />
                           </Button>
                           <Button variant="destructive" size="iconSm" onClick={() => handleDeleteItem(item)} aria-label="Delete main item">
-                            <Trash2 />
+                            <TrashBinTrashBoldDuotoneIcon />
                           </Button>
                         </div>
                       </TableCell>
@@ -160,10 +160,10 @@ export function ItemsTablesSection({
                       <TableCell>
                         <div className="flex items-center justify-center gap-2">
                           <Button variant="outline" size="iconSm" onClick={() => onEditVariant(subledger)} aria-label="Edit item variant">
-                            <Pencil />
+                            <PenNewSquareBoldDuotoneIcon />
                           </Button>
                           <Button variant="destructive" size="iconSm" onClick={() => handleDeleteVariant(subledger)} aria-label="Delete item variant">
-                            <Trash2 />
+                            <TrashBinTrashBoldDuotoneIcon />
                           </Button>
                         </div>
                       </TableCell>

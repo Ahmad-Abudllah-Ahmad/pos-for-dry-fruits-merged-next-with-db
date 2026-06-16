@@ -47,7 +47,7 @@ export function LoginForm() {
         setWorkspaces([]);
       }
       const next = search.get("next");
-      const defaultDest = isAdminUser(user) ? "/admin" : "/app";
+      const defaultDest = isAdminUser(user) ? "/admin" : "/app/pos";
       const dest = next && next.startsWith("/") && !next.startsWith("//") ? next : defaultDest;
       router.push(dest);
       router.refresh();
@@ -219,4 +219,3 @@ export function LoginForm() {
     </div>
   );
 }
-

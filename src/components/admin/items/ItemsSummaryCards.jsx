@@ -1,6 +1,6 @@
 "use client";
 
-import { Boxes, Layers2, Plus } from "lucide-react";
+import { AddCircleBoldDuotoneIcon, BoxBoldDuotoneIcon, LayersBoldDuotoneIcon } from "@/components/icons";
 
 import { Button } from "@/components/common/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/common/card";
@@ -19,7 +19,7 @@ export function ItemsSummaryCards({ itemTotal, variantTotal, onAddItem, onAddVar
       title: "Main Items",
       description: "All parent products available in this workspace.",
       value: itemTotal,
-      icon: Boxes,
+      icon: BoxBoldDuotoneIcon,
       action: "Add Main Item",
       onClick: onAddItem,
     },
@@ -27,7 +27,7 @@ export function ItemsSummaryCards({ itemTotal, variantTotal, onAddItem, onAddVar
       title: "Items Variants",
       description: "All variants linked under main items.",
       value: variantTotal,
-      icon: Layers2,
+      icon: LayersBoldDuotoneIcon,
       action: "Add Item Variant",
       onClick: onAddVariant,
     },
@@ -56,7 +56,7 @@ export function ItemsSummaryCards({ itemTotal, variantTotal, onAddItem, onAddVar
                 <p className="mt-1 text-sm text-muted-foreground">Live total</p>
               </div>
               <Button onClick={card.onClick}>
-                <Plus />
+                <AddCircleBoldDuotoneIcon />
                 {card.action}
               </Button>
             </CardContent>

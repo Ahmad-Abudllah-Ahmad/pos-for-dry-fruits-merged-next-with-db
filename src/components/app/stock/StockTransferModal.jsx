@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRightLeft, Plus, Trash2 } from "lucide-react";
+import {
+  AddCircleBoldDuotoneIcon,
+  TransferHorizontalBoldDuotoneIcon,
+  TrashBinTrashBoldDuotoneIcon,
+} from "@/components/icons";
 import { toast } from "sonner";
 
 import { createTransferBatch } from "@/api";
@@ -225,7 +229,7 @@ export function StockTransferModal({
                   disabled={busy || transferRows.length === 1}
                   aria-label={`Remove transfer line ${index + 1}`}
                 >
-                  <Trash2 className="size-4" />
+                  <TrashBinTrashBoldDuotoneIcon className="size-4" />
                 </Button>
               </div>
             ))}
@@ -233,11 +237,11 @@ export function StockTransferModal({
 
           <div className="flex flex-wrap justify-between gap-2">
             <Button type="button" variant="outline" onClick={() => setTransferRows((rows) => [...rows, newTransferRow()])} disabled={busy}>
-              <Plus className="size-4" />
+              <AddCircleBoldDuotoneIcon className="size-4" />
               Add line
             </Button>
             <Button type="button" onClick={handleTransfer} disabled={busy}>
-              <ArrowRightLeft className="size-4" />
+              <TransferHorizontalBoldDuotoneIcon className="size-4" />
               {busy ? "Saving..." : "Save transfer"}
             </Button>
           </div>

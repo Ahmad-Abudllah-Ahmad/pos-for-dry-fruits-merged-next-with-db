@@ -30,3 +30,17 @@ export function updateUser(userId, body) {
 export function setUserPassword(userId, body) {
   return request(`/users/${userId}/password`, { method: "PATCH", body });
 }
+
+/**
+ * @param {number} userId
+ */
+export function deactivateUser(userId) {
+  return request(`/users/${userId}`, { method: "DELETE" });
+}
+
+/**
+ * @param {number} userId
+ */
+export function reactivateUser(userId) {
+  return request(`/users/${userId}/reactivate`, { method: "POST" });
+}

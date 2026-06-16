@@ -2,6 +2,7 @@ export { API_BASE, API_V1 } from "./config";
 export { ApiError, request } from "./client";
 export * from "./auth";
 export * from "./users";
+export * from "./employees";
 export * from "./workspaces";
 export * from "./items";
 export * from "./inventory";

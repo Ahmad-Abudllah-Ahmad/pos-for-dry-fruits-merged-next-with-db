@@ -1,18 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Boxes, RefreshCw, Truck, UserPlus, Warehouse } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BoxBoldDuotoneIcon,
+  MoneyBagBoldDuotoneIcon,
+  PenNewSquareBoldDuotoneIcon,
+  RefreshBoldDuotoneIcon,
+  ShopBoldDuotoneIcon,
+  TrashBinTrashBoldDuotoneIcon,
+  UserPlusBoldDuotoneIcon,
+  UsersGroupRoundedBoldDuotoneIcon,
+} from "@/components/icons";
 import { toast } from "sonner";
 
 import {
+  createEmployee,
   createUser,
   createWorkspace,
+  deactivateUser,
+  deleteEmployee,
+  listEmployees,
   listItems,
   listMovements,
   listWorkspaceMembers,
   listWorkspaces,
   listStock,
   listSubledgers,
+  reactivateUser,
+  updateEmployee,
+  updateUser,
 } from "@/api";
 import { getItemName } from "@/lib/item-name";
 import { money, formatWeight } from "@/lib/format";
@@ -23,19 +39,48 @@ import { MetricStatCard } from "@/components/common/metric-stat-card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ApiError } from "@/api/client";
+import { cn } from "@/lib/utils/cn";
+
+const CARD_TABLE_SCROLL_ROW_LIMIT = 5;
+const CARD_TABLE_SCROLL_MAX_HEIGHT = "max-h-[16.5rem]";
+const RECENT_MOVEMENTS_LIMIT = 15;
+
+/**
+ * @param {{ rowCount: number; children: React.ReactNode }} props
+ */
+function ScrollableCardTable({ rowCount, children }) {
+  const scrollable = rowCount > CARD_TABLE_SCROLL_ROW_LIMIT;
+  return (
+    <div className={cn(scrollable && `${CARD_TABLE_SCROLL_MAX_HEIGHT} overflow-y-auto`)}>
+      {children}
+    </div>
+  );
+}
 
 export function AdminDashboard() {
   const { workspaces, activeWorkspaceId, setWorkspaces, setActiveWorkspaceId } = useWorkspaceStore();
   const [users, setUsers] = useState(/** @type {Array<Record<string, unknown>>} */([]));
+  const [employees, setEmployees] = useState(/** @type {Array<Record<string, unknown>>} */([]));
   const [stockVal, setStockVal] = useState(0);
   const [movements, setMovements] = useState(/** @type {Array<Record<string, unknown>>} */([]));
   const [items, setItems] = useState(/** @type {Array<Record<string, unknown>>} */([]));
   const [subledgers, setSubledgers] = useState(/** @type {Array<Record<string, unknown>>} */([]));
   const [loading, setLoading] = useState(true);
+  const [userTab, setUserTab] = useState("active");
 
   const wid = activeWorkspaceId;
+
+  const activeUsers = useMemo(
+    () => users.filter((user) => user.is_active !== false),
+    [users]
+  );
+  const inactiveUsers = useMemo(
+    () => users.filter((user) => user.is_active === false),
+    [users]
+  );
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -57,6 +102,7 @@ export function AdminDashboard() {
   const loadWorkspaceData = useCallback(async () => {
     if (wid == null) {
       setUsers([]);
+      setEmployees([]);
       setStockVal(0);
       setMovements([]);
       setItems([]);
@@ -70,11 +116,12 @@ export function AdminDashboard() {
         0
       );
       setStockVal(v);
-      const [members, mov, it, sl] = await Promise.all([
+      const [members, mov, it, sl, emps] = await Promise.all([
         listWorkspaceMembers(wid),
         listMovements(wid),
         listItems(wid, null),
         listSubledgers(wid),
+        listEmployees(wid),
       ]);
       setUsers(
         (Array.isArray(members) ? members : [])
@@ -85,7 +132,8 @@ export function AdminDashboard() {
           }))
           .filter((user) => user.id != null)
       );
-      setMovements(Array.isArray(mov) ? mov.slice(0, 30) : []);
+      setEmployees(Array.isArray(emps) ? emps : []);
+      setMovements(Array.isArray(mov) ? mov.slice(0, RECENT_MOVEMENTS_LIMIT) : []);
       setItems(Array.isArray(it) ? it : []);
       setSubledgers(Array.isArray(sl) ? sl : []);
     } catch (e) {
@@ -121,18 +169,18 @@ export function AdminDashboard() {
           <p className="text-sm text-muted-foreground">Users, workspaces, transfers, and intake.</p>
         </div>
         <Button type="button" variant="outline" size="sm" onClick={() => { loadAll(); loadWorkspaceData(); }} disabled={loading}>
-          <RefreshCw className="size-4" />
+          <RefreshBoldDuotoneIcon className="size-4" />
           Refresh
         </Button>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricStatCard label="Employees (this Shop)" value={String(users.length)} icon={UserPlus} loading={loading} />
-        <MetricStatCard label="Shops" value={String(workspaces.length)} icon={Warehouse} loading={loading} />
-        <MetricStatCard label="Total Items this shop" value={String(items.length)} icon={Boxes} loading={loading} />
+        <MetricStatCard label="Employees (this Shop)" value={String(employees.length)} icon={UsersGroupRoundedBoldDuotoneIcon} loading={loading} />
+        <MetricStatCard label="Shops" value={String(workspaces.length)} icon={ShopBoldDuotoneIcon} loading={loading} />
+        <MetricStatCard label="Total Items this shop" value={String(items.length)} icon={BoxBoldDuotoneIcon} loading={loading} />
         <MetricStatCard
           label="Total stock value"
           value={money(stockVal)}
-          icon={Truck}
+          icon={MoneyBagBoldDuotoneIcon}
           sub="All locations"
           loading={loading}
         />
@@ -147,24 +195,26 @@ export function AdminDashboard() {
             <CreateUserForm workspaceId={wid} onSuccess={loadWorkspaceData} />
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Phone</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-medium">{String(u.name)}</TableCell>
-                    <TableCell>{String(u.workspace_role ?? u.role)}</TableCell>
-                    <TableCell className="text-muted-foreground">{String(u.phone_number)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <Tabs value={userTab} onValueChange={setUserTab}>
+              <TabsList className="mb-3">
+                <TabsTrigger value="active">Active ({activeUsers.length})</TabsTrigger>
+                <TabsTrigger value="inactive">Inactive ({inactiveUsers.length})</TabsTrigger>
+              </TabsList>
+              <TabsContent value="active" className="mt-0">
+                <UsersTable
+                  users={activeUsers}
+                  mode="active"
+                  onSuccess={loadWorkspaceData}
+                />
+              </TabsContent>
+              <TabsContent value="inactive" className="mt-0">
+                <UsersTable
+                  users={inactiveUsers}
+                  mode="inactive"
+                  onSuccess={loadWorkspaceData}
+                />
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
         <Card>
@@ -175,25 +225,96 @@ export function AdminDashboard() {
             <CreateWorkspaceForm onSuccess={loadAll} />
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID</TableHead>
-                  <TableHead>Name</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {workspaces.map((w) => (
-                  <TableRow key={w.id}>
-                    <TableCell>{w.id}</TableCell>
-                    <TableCell className="font-medium">{w.name}</TableCell>
+            <ScrollableCardTable rowCount={workspaces.length}>
+              <Table>
+                <TableHeader className="sticky top-0 z-10 bg-muted/55 shadow-[0_1px_0_0_var(--border)]">
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Name</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {workspaces.map((w) => (
+                    <TableRow key={w.id}>
+                      <TableCell>{w.id}</TableCell>
+                      <TableCell className="font-medium">{w.name}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </ScrollableCardTable>
           </CardContent>
         </Card>
       </div>
+      {wid != null && (
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <CreateEmployeeForm workspaceId={wid} onSuccess={loadWorkspaceData} />
+          </div>
+          <Card>
+            <CardHeader>
+              <div>
+                <CardTitle>Employees</CardTitle>
+                <CardDescription>Shop staff for wage tracking and expense history</CardDescription>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ScrollableCardTable rowCount={employees.length}>
+                <Table>
+                  <TableHeader className="sticky top-0 z-10 bg-muted/55 shadow-[0_1px_0_0_var(--border)]">
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Designation</TableHead>
+                      <TableHead>Phone</TableHead>
+                      <TableHead className="w-[120px] text-center">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {employees.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                          No employees added yet.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      employees.map((employee) => (
+                        <TableRow key={employee.id}>
+                          <TableCell className="font-medium">{String(employee.name)}</TableCell>
+                          <TableCell>{String(employee.designation ?? "—")}</TableCell>
+                          <TableCell className="text-muted-foreground">{String(employee.phone_number ?? "—")}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center gap-2">
+                              <EditEmployeeForm workspaceId={wid} employee={employee} onSuccess={loadWorkspaceData} />
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="iconSm"
+                                aria-label="Delete employee"
+                                onClick={async () => {
+                                  if (!window.confirm(`Delete employee "${String(employee.name)}"?`)) return;
+                                  try {
+                                    await deleteEmployee(wid, Number(employee.id));
+                                    toast.success("Employee deleted");
+                                    loadWorkspaceData();
+                                  } catch (err) {
+                                    if (err instanceof ApiError) toast.error(err.message);
+                                  }
+                                }}
+                              >
+                                <TrashBinTrashBoldDuotoneIcon />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </ScrollableCardTable>
+            </CardContent>
+          </Card>
+        </div>
+      )}
       {wid != null && (
         <>
           <Card>
@@ -242,6 +363,92 @@ export function AdminDashboard() {
   );
 }
 
+/**
+ * @param {{
+ *   users: Array<Record<string, unknown>>;
+ *   mode: "active" | "inactive";
+ *   onSuccess: () => void;
+ * }} props
+ */
+function UsersTable({ users, mode, onSuccess }) {
+  const emptyMessage = mode === "active" ? "No active users in this shop." : "No inactive users in this shop.";
+
+  return (
+    <ScrollableCardTable rowCount={users.length}>
+      <Table>
+        <TableHeader className="sticky top-0 z-10 bg-muted/55 shadow-[0_1px_0_0_var(--border)]">
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Phone</TableHead>
+            <TableHead className="w-[160px] text-center">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {users.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                {emptyMessage}
+              </TableCell>
+            </TableRow>
+          ) : (
+            users.map((user) => (
+              <TableRow key={user.id}>
+                <TableCell className="font-medium">{String(user.name)}</TableCell>
+                <TableCell>{String(user.workspace_role ?? user.role)}</TableCell>
+                <TableCell className="text-muted-foreground">{String(user.phone_number)}</TableCell>
+                <TableCell>
+                  <div className="flex items-center justify-center gap-2">
+                    <EditUserForm user={user} onSuccess={onSuccess} />
+                    {mode === "active" ? (
+                      String(user.role) !== "Admin" && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            if (!window.confirm(`Deactivate user "${String(user.name)}"?`)) return;
+                            try {
+                              await deactivateUser(Number(user.id));
+                              toast.success("User deactivated");
+                              onSuccess();
+                            } catch (err) {
+                              if (err instanceof ApiError) toast.error(err.message);
+                            }
+                          }}
+                        >
+                          Deactivate
+                        </Button>
+                      )
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await reactivateUser(Number(user.id));
+                            toast.success("User reactivated");
+                            onSuccess();
+                          } catch (err) {
+                            if (err instanceof ApiError) toast.error(err.message);
+                          }
+                        }}
+                      >
+                        Reactivate
+                      </Button>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </ScrollableCardTable>
+  );
+}
+
 /** @param {{ workspaceId: number | null; onSuccess: () => void }} p */
 function CreateUserForm({ workspaceId, onSuccess }) {
   const [open, setOpen] = useState(false);
@@ -251,7 +458,7 @@ function CreateUserForm({ workspaceId, onSuccess }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button type="button" size="sm" variant="secondary">
-          <UserPlus className="size-4" />
+          <UserPlusBoldDuotoneIcon className="size-4" />
           Add user
         </Button>
       </DialogTrigger>
@@ -304,6 +511,219 @@ function CreateUserForm({ workspaceId, onSuccess }) {
   );
 }
 
+/** @param {{ user: Record<string, unknown>; onSuccess: () => void }} p */
+function EditUserForm({ user, onSuccess }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({
+    name: String(user.name ?? ""),
+    cnic_number: String(user.cnic_number ?? ""),
+    phone_number: String(user.phone_number ?? ""),
+    address: String(user.address ?? ""),
+  });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setF({
+      name: String(user.name ?? ""),
+      cnic_number: String(user.cnic_number ?? ""),
+      phone_number: String(user.phone_number ?? ""),
+      address: String(user.address ?? ""),
+    });
+  }, [user]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="iconSm" aria-label="Edit user">
+          <PenNewSquareBoldDuotoneIcon />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit user</DialogTitle>
+        </DialogHeader>
+        <form
+          className="space-y-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              await updateUser(Number(user.id), {
+                name: f.name,
+                cnic_number: f.cnic_number,
+                phone_number: f.phone_number,
+                address: f.address || null,
+              });
+              toast.success("User updated");
+              setOpen(false);
+              onSuccess();
+            } catch (err) {
+              if (err instanceof ApiError) toast.error(err.message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {["name", "cnic_number", "phone_number", "address"].map((k) => (
+            <div key={k} className="space-y-1">
+              <Label className="capitalize">{k.replace("_", " ")}</Label>
+              <Input
+                required={k !== "address"}
+                value={/** @type {Record<string, string>} */(f)[k]}
+                onChange={(e) => setF((x) => ({ ...x, [k]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <Button className="w-full" type="submit" disabled={busy}>
+            Save changes
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** @param {{ workspaceId: number; onSuccess: () => void }} p */
+function CreateEmployeeForm({ workspaceId, onSuccess }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ name: "", phone_number: "", cnic_number: "", address: "", designation: "" });
+  const [busy, setBusy] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" size="sm" variant="secondary">
+          <UserPlusBoldDuotoneIcon className="size-4" />
+          Add employee
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New employee</DialogTitle>
+        </DialogHeader>
+        <form
+          className="space-y-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              await createEmployee(workspaceId, {
+                name: f.name,
+                phone_number: f.phone_number || null,
+                cnic_number: f.cnic_number || null,
+                address: f.address || null,
+                designation: f.designation || null,
+              });
+              toast.success("Employee created");
+              setOpen(false);
+              setF({ name: "", phone_number: "", cnic_number: "", address: "", designation: "" });
+              onSuccess();
+            } catch (err) {
+              if (err instanceof ApiError) toast.error(err.message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {[
+            { key: "name", required: true },
+            { key: "designation", required: false },
+            { key: "phone_number", required: false },
+            { key: "cnic_number", required: false },
+            { key: "address", required: false },
+          ].map(({ key, required }) => (
+            <div key={key} className="space-y-1">
+              <Label className="capitalize">{key.replace("_", " ")}</Label>
+              <Input
+                required={required}
+                value={/** @type {Record<string, string>} */(f)[key]}
+                onChange={(e) => setF((x) => ({ ...x, [key]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <Button className="w-full" type="submit" disabled={busy}>
+            Create
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** @param {{ workspaceId: number; employee: Record<string, unknown>; onSuccess: () => void }} p */
+function EditEmployeeForm({ workspaceId, employee, onSuccess }) {
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({
+    name: String(employee.name ?? ""),
+    phone_number: String(employee.phone_number ?? ""),
+    cnic_number: String(employee.cnic_number ?? ""),
+    address: String(employee.address ?? ""),
+    designation: String(employee.designation ?? ""),
+  });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setF({
+      name: String(employee.name ?? ""),
+      phone_number: String(employee.phone_number ?? ""),
+      cnic_number: String(employee.cnic_number ?? ""),
+      address: String(employee.address ?? ""),
+      designation: String(employee.designation ?? ""),
+    });
+  }, [employee]);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="iconSm" aria-label="Edit employee">
+          <PenNewSquareBoldDuotoneIcon />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit employee</DialogTitle>
+        </DialogHeader>
+        <form
+          className="space-y-2"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            try {
+              await updateEmployee(workspaceId, Number(employee.id), {
+                name: f.name,
+                phone_number: f.phone_number || null,
+                cnic_number: f.cnic_number || null,
+                address: f.address || null,
+                designation: f.designation || null,
+              });
+              toast.success("Employee updated");
+              setOpen(false);
+              onSuccess();
+            } catch (err) {
+              if (err instanceof ApiError) toast.error(err.message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          {["name", "designation", "phone_number", "cnic_number", "address"].map((k) => (
+            <div key={k} className="space-y-1">
+              <Label className="capitalize">{k.replace("_", " ")}</Label>
+              <Input
+                required={k === "name"}
+                value={/** @type {Record<string, string>} */(f)[k]}
+                onChange={(e) => setF((x) => ({ ...x, [k]: e.target.value }))}
+              />
+            </div>
+          ))}
+          <Button className="w-full" type="submit" disabled={busy}>
+            Save changes
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /** @param {{ onSuccess: () => void }} p */
 function CreateWorkspaceForm({ onSuccess }) {
   const [open, setOpen] = useState(false);
@@ -314,7 +734,7 @@ function CreateWorkspaceForm({ onSuccess }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button type="button" size="sm" variant="default">
-          <Warehouse className="size-4" />
+          <ShopBoldDuotoneIcon className="size-4" />
           New workspace
         </Button>
       </DialogTrigger>

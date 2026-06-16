@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { RefreshBoldDuotoneIcon } from "@/components/icons";
 import { toast } from "sonner";
 
 import { listItemsPage, listSubledgersPage, listWorkspaces } from "@/api";
@@ -129,7 +129,7 @@ export function AdminItemsPage() {
           </p>
         </div>
         <Button variant="outline" onClick={refreshAll} disabled={loading}>
-          <RefreshCw className={loading ? "animate-spin" : ""} />
+          <RefreshBoldDuotoneIcon className={loading ? "animate-spin" : ""} />
           Refresh
         </Button>
       </div>

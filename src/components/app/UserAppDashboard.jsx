@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowRightLeft, Store, Warehouse } from "lucide-react";
+import {
+  Shop2BoldDuotoneIcon,
+  TransferHorizontalBoldDuotoneIcon,
+  WarehouseBoldDuotoneIcon,
+} from "@/components/icons";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { listItems, listStock, listStockPage, listSubledgers } from "@/api";
@@ -19,6 +24,7 @@ const PAGE_SIZE = 10;
 const EMPTY_PAGE = { items: [], total: 0, page: 1, page_size: PAGE_SIZE };
 
 export function UserAppDashboard() {
+  const router = useRouter();
   const activeId = useWorkspaceStore((s) => s.activeWorkspaceId);
   const user = useAuthStore((s) => s.user);
   const admin = isAdminUser(user);
@@ -83,8 +89,18 @@ export function UserAppDashboard() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (user && !admin) {
+      router.replace("/app/pos");
+    }
+  }, [admin, router, user]);
+
   const totalShop = shop.reduce((a, r) => a + parseFloat(String(r.stock_value ?? 0) || "0"), 0);
   const totalWh = wh.reduce((a, r) => a + parseFloat(String(r.stock_value ?? 0) || "0"), 0);
+
+  if (user && !admin) {
+    return null;
+  }
 
   if (activeId == null) {
     return (
@@ -119,7 +135,7 @@ export function UserAppDashboard() {
                 {loading ? "-" : money(totalShop)}
               </p>
             </div>
-            <Store className="size-4 text-muted-foreground" />
+            <Shop2BoldDuotoneIcon className="size-4 text-muted-foreground" />
           </CardHeader>
           {admin && (
             <div className="px-5 pb-5">
@@ -131,7 +147,7 @@ export function UserAppDashboard() {
                   setTransferOpen(true);
                 }}
               >
-                <ArrowRightLeft className="size-4" />
+                <TransferHorizontalBoldDuotoneIcon className="size-4" />
                 Transfer to shop
               </Button>
             </div>
@@ -146,7 +162,7 @@ export function UserAppDashboard() {
                 {loading ? "-" : money(totalWh)}
               </p>
             </div>
-            <Warehouse className="size-4 text-muted-foreground" />
+            <WarehouseBoldDuotoneIcon className="size-4 text-muted-foreground" />
           </CardHeader>
           {admin && (
             <div className="px-5 pb-5">
@@ -158,7 +174,7 @@ export function UserAppDashboard() {
                   setTransferOpen(true);
                 }}
               >
-                <ArrowRightLeft className="size-4" />
+                <TransferHorizontalBoldDuotoneIcon className="size-4" />
                 Transfer to warehouse
               </Button>
             </div>

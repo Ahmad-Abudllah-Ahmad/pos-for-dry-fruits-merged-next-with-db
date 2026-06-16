@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { AltArrowLeftBoldIcon, AltArrowRightBoldIcon } from "@/components/icons";
 
 import { Button } from "@/components/common/button";
 
@@ -24,7 +24,7 @@ export function ItemsPagination({ page, pageSize, total, onPageChange }) {
       </p>
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
-          <ChevronLeft />
+          <AltArrowLeftBoldIcon />
           Previous
         </Button>
         <span className="min-w-20 text-center font-medium text-foreground">
@@ -37,7 +37,7 @@ export function ItemsPagination({ page, pageSize, total, onPageChange }) {
           disabled={page >= totalPages}
         >
           Next
-          <ChevronRight />
+          <AltArrowRightBoldIcon />
         </Button>
       </div>
     </div>

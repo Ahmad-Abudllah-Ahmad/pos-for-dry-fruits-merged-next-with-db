@@ -1,6 +1,12 @@
 "use client";
 
-import { BarChart3, Boxes, Home, ShoppingCart, Users } from "lucide-react";
+import {
+  BoxBoldDuotoneIcon,
+  CartLarge2BoldDuotoneIcon,
+  Chart2BoldDuotoneIcon,
+  Home2BoldDuotoneIcon,
+  ShieldUserBoldDuotoneIcon,
+} from "@/components/icons";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -18,14 +24,18 @@ export function AppDock({ className = "" }) {
 
   const items = [];
   if (admin) {
-    items.push({ href: "/admin", label: "Admin", icon: Users });
-    items.push({ href: "/admin/items", label: "Items", icon: Boxes });
+    items.push({ href: "/admin", label: "Admin", icon: ShieldUserBoldDuotoneIcon });
+    items.push({ href: "/admin/items", label: "Items", icon: BoxBoldDuotoneIcon });
   }
-  items.push(
-    { href: "/app", label: "Stock", icon: Home },
-    { href: "/app/pos", label: "POS", icon: ShoppingCart },
-    { href: "/analytics", label: "Analytics", icon: BarChart3 }
-  );
+  if (admin) {
+    items.push(
+      { href: "/app", label: "Stock", icon: Home2BoldDuotoneIcon },
+      { href: "/app/pos", label: "POS", icon: CartLarge2BoldDuotoneIcon },
+      { href: "/analytics", label: "Analytics", icon: Chart2BoldDuotoneIcon }
+    );
+  } else {
+    items.push({ href: "/app/pos", label: "POS", icon: CartLarge2BoldDuotoneIcon });
+  }
 
   return (
     <div

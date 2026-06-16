@@ -7,10 +7,9 @@ import { toast } from "sonner";
 import { getItemName } from "@/lib/item-name";
 import { formatWeight, money } from "@/lib/format";
 import { Button } from "@/components/common/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/common/card";
+import { Card, CardContent } from "@/components/common/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select,
@@ -106,6 +105,9 @@ function totalComparison(declaredTotal, computedTotal) {
  * @param {{
  *   mode: "purchase" | "ledger";
  *   onModeChange: (mode: "purchase" | "ledger") => void;
+ *   showModeSwitch?: boolean;
+ *   title?: string;
+ *   description?: string;
  *   purchase: Record<string, unknown> | null;
  *   ledger: Record<string, unknown> | null;
  *   items: Array<Record<string, unknown>>;
@@ -132,6 +134,9 @@ export function SupplierPurchaseCard(props) {
   const {
     mode,
     onModeChange,
+    showModeSwitch = true,
+    title = "Stock partner entry",
+    description = "Use the same section for supplier purchases and dealer sale ledgers with flexible later payments.",
     purchase,
     ledger,
     items,
@@ -172,28 +177,11 @@ export function SupplierPurchaseCard(props) {
   }, [items]);
 
   return (
-    <Card>
-      <CardHeader className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <CardTitle>Stock partner entry</CardTitle>
-            <CardDescription>
-              Use the same section for supplier purchases and dealer sale ledgers with flexible later payments.
-            </CardDescription>
-          </div>
-          <div className="grid grid-cols-2 gap-2 rounded-md border border-border/80 p-1">
-            <Button type="button" variant={mode === "purchase" ? "default" : "ghost"} size="sm" onClick={() => onModeChange("purchase")} disabled={busy}>
-              Supplier purchase
-            </Button>
-            <Button type="button" variant={mode === "ledger" ? "default" : "ghost"} size="sm" onClick={() => onModeChange("ledger")} disabled={busy}>
-              Dealer sale
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
+    <Card className="overflow-hidden border-border/90 shadow-sm">
+      <CardContent className="p-4 sm:p-5">
         {mode === "purchase" ? (
           <PurchaseModeSection
+            variant="supplier"
             purchase={purchase}
             items={items}
             subledgersByItemId={subledgersByItemId}
@@ -211,6 +199,7 @@ export function SupplierPurchaseCard(props) {
           />
         ) : (
           <LedgerModeSection
+            variant="ledger"
             ledger={ledger}
             items={items}
             subledgersByItemId={subledgersByItemId}
@@ -232,6 +221,7 @@ export function SupplierPurchaseCard(props) {
 }
 
 function PurchaseModeSection({
+  variant,
   purchase,
   items,
   subledgersByItemId,
@@ -435,12 +425,14 @@ function PurchaseModeSection({
 
   return (
     <ModeScaffold
-      title="Supplier stock entry"
-      description={purchase ? `Slip #${purchase.id} - ${String(purchase.status)}` : "No supplier slip selected"}
+      variant="supplier"
+      title={purchase ? `Slip #${purchase.id}` : "Supplier slip"}
+      statusLabel={purchase ? String(purchase.status) : null}
       busy={busy}
       buttonLabel="New slip"
       onStart={startSlip}
-      emptyText="Start a new supplier slip, add products, then finalize it into warehouse stock."
+      emptyText="No slip selected"
+      emptyHint="Create a slip to record supplier stock and payments."
       record={purchase}
       summary={{
         items: String(totals.items),
@@ -459,23 +451,17 @@ function PurchaseModeSection({
       onNameChange={setSupplier}
       namePlaceholder="Supplier"
       extraDetailFields={(
-        <Field label="Supplier slip total">
+        <Field label="Slip total (PKR)">
           <Input
             value={declaredTotal}
             onChange={(e) => setDeclaredTotal(e.target.value)}
             inputMode="decimal"
-            placeholder="Enter total supplier amount"
+            placeholder="Supplier invoice total"
             disabled={busy || !canEditSlip}
           />
         </Field>
       )}
-      detailsHelperText="First save supplier name, payment status, and the supplier's full slip total. Then add line items below."
-      paymentSectionTitle={isDraft ? "Payment before finalize" : "Add installment"}
-      paymentSectionDescription={
-        isDraft
-          ? "After adding products, record how much you are paying now. For installment slips, you can keep adding more payments later."
-          : "Use this section only for the next payment. Supplier details and items stay unchanged."
-      }
+      paymentSectionTitle={isDraft ? "Payment" : "Installment"}
       paymentMethod={paymentMethod}
       onPaymentMethodChange={setPaymentMethod}
       paymentStatus={paymentStatus}
@@ -483,13 +469,8 @@ function PurchaseModeSection({
       showPaymentMethodInDetails={false}
       showPaymentAmountInDetails={false}
       showPaymentNoteInDetails={false}
-      paymentAmountLabel={isDraft ? "Pay now" : "Next installment"}
-      paymentAmountPlaceholder={isDraft ? "Enter amount being paid now" : "Enter next installment amount"}
-      paymentHint={
-        paymentStatus === "paid"
-          ? "For fully paid slips, record the one-time payment before finalizing, or leave it empty and finalize to mark the remaining balance as paid."
-          : "For installment slips, each payment is recorded separately and shown below."
-      }
+      paymentAmountLabel={isDraft ? "Pay now" : "Amount"}
+      paymentAmountPlaceholder={isDraft ? "Amount paid now" : "Installment amount"}
       paidAmount={paidAmount}
       onPaidAmountChange={setPaidAmount}
       paymentNote={paymentNote}
@@ -536,6 +517,7 @@ function PurchaseModeSection({
 }
 
 function LedgerModeSection({
+  variant,
   ledger,
   items,
   subledgersByItemId,
@@ -738,12 +720,14 @@ function LedgerModeSection({
 
   return (
     <ModeScaffold
-      title="Dealer sale ledger"
-      description={ledger ? `Entry #${ledger.id} - ${String(ledger.status)}` : "No dealer sale selected"}
+      variant="ledger"
+      title={ledger ? `Ledger #${ledger.id}` : "Dealer ledger"}
+      statusLabel={ledger ? String(ledger.status) : null}
       busy={busy}
-      buttonLabel="New dealer sale"
+      buttonLabel="New ledger"
       onStart={startEntry}
-      emptyText="Start a dealer sale ledger, add items loaded from shop stock, then finalize and collect payment later in any installments."
+      emptyText="No ledger selected"
+      emptyHint="Create a ledger to load items for a dealer on credit."
       record={ledger}
       summary={{
         items: String(totals.items),
@@ -768,13 +752,8 @@ function LedgerModeSection({
       onPaymentMethodChange={setPaymentMethod}
       paymentStatus={paymentStatus}
       onPaymentStatusChange={setPaymentStatus}
-      paymentAmountLabel={isDraft ? "Received now" : "Next installment"}
-      paymentAmountPlaceholder={isDraft ? "Optional upfront payment" : "Enter next installment amount"}
-      paymentHint={
-        isDraft
-          ? "This amount is saved with the draft and becomes the first payment once the dealer sale is finalized."
-          : "Only enter the new installment here. Earlier payments are listed below."
-      }
+      paymentAmountLabel={isDraft ? "Received now" : "Amount"}
+      paymentAmountPlaceholder={isDraft ? "Optional upfront" : "Installment amount"}
       paidAmount={paidAmount}
       onPaidAmountChange={setPaidAmount}
       paymentNote={paymentNote}
@@ -818,12 +797,14 @@ function LedgerModeSection({
 }
 
 function ModeScaffold({
+  variant = "supplier",
   title,
-  description,
+  statusLabel,
   busy,
   buttonLabel,
   onStart,
   emptyText,
+  emptyHint = "",
   record,
   summary,
   detailsTitle,
@@ -839,9 +820,7 @@ function ModeScaffold({
   extraNameValue,
   onExtraNameChange,
   extraDetailFields,
-  detailsHelperText = "",
   paymentSectionTitle = "Payment",
-  paymentSectionDescription = "",
   paymentMethod,
   onPaymentMethodChange,
   paymentStatus,
@@ -851,7 +830,6 @@ function ModeScaffold({
   showPaymentNoteInDetails = true,
   paymentAmountLabel = "Paid now",
   paymentAmountPlaceholder = "",
-  paymentHint = "",
   paidAmount,
   onPaidAmountChange,
   paymentNote,
@@ -893,12 +871,27 @@ function ModeScaffold({
   finalizeLabel,
   onFinalize,
 }) {
+  const formSectionClass =
+    variant === "ledger" ? "pos-form-section pos-form-section--ledger" : "pos-form-section pos-form-section--supplier";
+  const summaryStripClass =
+    variant === "ledger" ? "pos-slip-summary-strip pos-slip-summary-strip--ledger" : "pos-slip-summary-strip pos-slip-summary-strip--supplier";
+  const infoBannerClass =
+    summaryNoticeTone === "match"
+      ? "pos-info-banner pos-info-banner--match"
+      : summaryNoticeTone === "over"
+        ? "pos-info-banner pos-info-banner--over"
+        : summaryNoticeTone === "under"
+          ? "pos-info-banner pos-info-banner--under"
+          : "pos-info-banner pos-info-banner--neutral";
+
   return (
-    <div className="space-y-5">
-      <div className="flex flex-row items-center justify-between gap-2">
-        <div>
-          <p className="font-semibold">{title}</p>
-          <p className="text-sm text-muted-foreground">{description}</p>
+    <div className="space-y-4">
+      <div className="pos-slip-action-bar">
+        <div className="min-w-0">
+          <p className="font-semibold [font-family:var(--font-outfit),system-ui,sans-serif]">{title}</p>
+          {statusLabel && (
+            <p className="text-xs capitalize text-muted-foreground">{statusLabel}</p>
+          )}
         </div>
         <Button type="button" variant="secondary" onClick={onStart} disabled={busy} className="shrink-0">
           {busy && <Loader2 className="size-4 animate-spin" />}
@@ -907,38 +900,27 @@ function ModeScaffold({
       </div>
 
       {!record && (
-        <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-          {emptyText}
+        <div className="pos-slip-empty">
+          <p className="pos-slip-empty-title">{emptyText}</p>
+          {emptyHint && <p className="pos-slip-empty-hint">{emptyHint}</p>}
         </div>
       )}
 
       {record && (
         <>
-          <div className="grid gap-2 rounded-md border border-border/80 bg-muted/25 p-3 text-sm sm:grid-cols-4">
-            <Summary label="Items" value={summary.items} />
-            <Summary label={summary.secondaryCountLabel} value={summary.secondaryCountValue} />
-            <Summary label="Quantity" value={summary.quantity} />
-            <Summary label="Total" value={summary.total} />
-          </div>
-          {summaryNotice && (
-            <div
-              className={`rounded-md border px-3 py-2 text-sm ${
-                summaryNoticeTone === "match"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : summaryNoticeTone === "over"
-                    ? "border-amber-200 bg-amber-50 text-amber-800"
-                    : summaryNoticeTone === "under"
-                      ? "border-sky-200 bg-sky-50 text-sky-800"
-                      : "border-border bg-muted/20 text-muted-foreground"
-              }`}
-            >
-              {summaryNotice}
+          <div className={summaryStripClass}>
+            <div className="grid gap-2 sm:grid-cols-4">
+              <Summary label="Items" value={summary.items} />
+              <Summary label={summary.secondaryCountLabel} value={summary.secondaryCountValue} />
+              <Summary label="Quantity" value={summary.quantity} />
+              <Summary label="Total" value={summary.total} />
             </div>
-          )}
+          </div>
+          {summaryNotice && <div className={infoBannerClass}>{summaryNotice}</div>}
 
-          <div className="space-y-4 rounded-md border border-border/80 p-3">
+          <div className={`${formSectionClass} space-y-4`}>
             <div className="flex items-center justify-between gap-3">
-              <p className="font-medium">{detailsTitle}</p>
+              <p className="pos-form-section-title">{detailsTitle}</p>
               <Badge variant={String(status) === "completed" ? "info" : "default"}>{String(status)}</Badge>
             </div>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -956,12 +938,12 @@ function ModeScaffold({
                   <Input
                     value={paymentMethod}
                     onChange={(e) => onPaymentMethodChange(e.target.value)}
-                    placeholder="Cash, bank transfer, cheque..."
+                    placeholder="Cash, bank, cheque…"
                     disabled={busy || (!canEditRecord && !canRecordPayment)}
                   />
                 </Field>
               )}
-              <Field label="Status">
+              <Field label="Payment type">
                 <Select value={paymentStatus} onValueChange={onPaymentStatusChange} disabled={busy || !canEditRecord}>
                   <SelectTrigger>
                     <SelectValue />
@@ -984,10 +966,8 @@ function ModeScaffold({
                 </Field>
               )}
             </div>
-            {detailsHelperText && <p className="text-sm text-muted-foreground">{detailsHelperText}</p>}
-            {paymentHint && <p className="text-sm text-muted-foreground">{paymentHint}</p>}
             {showPaymentNoteInDetails && (
-              <Field label="Payment note">
+              <Field label="Note">
                 <Input value={paymentNote} onChange={(e) => onPaymentNoteChange(e.target.value)} disabled={busy || (!canEditRecord && !canRecordPayment)} />
               </Field>
             )}
@@ -1008,17 +988,14 @@ function ModeScaffold({
           </div>
 
           {!showPaymentMethodInDetails && (
-            <div className="space-y-4 rounded-md border border-border/80 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="font-medium">{paymentSectionTitle}</p>
-                <p className="text-sm text-muted-foreground">{paymentSectionDescription}</p>
-              </div>
+            <div className={`${formSectionClass} space-y-4`}>
+              <p className="pos-form-section-title">{paymentSectionTitle}</p>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <Field label="Payment method">
                   <Input
                     value={paymentMethod}
                     onChange={(e) => onPaymentMethodChange(e.target.value)}
-                    placeholder="Cash, bank transfer, cheque..."
+                    placeholder="Cash, bank, cheque…"
                     disabled={busy || !showPaymentAction}
                   />
                 </Field>
@@ -1031,50 +1008,44 @@ function ModeScaffold({
                     disabled={busy || !showPaymentAction}
                   />
                 </Field>
-                <Field label="Payment note">
+                <Field label="Note">
                   <Input
                     value={paymentNote}
                     onChange={(e) => onPaymentNoteChange(e.target.value)}
-                    placeholder="Optional note"
+                    placeholder="Optional"
                     disabled={busy || !showPaymentAction}
                   />
                 </Field>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {showPaymentAction && (
-                  <Button type="button" onClick={onAddPayment} disabled={busy}>
-                    <Check className="size-4" />
-                    {addPaymentLabel}
-                  </Button>
-                )}
-              </div>
+              {showPaymentAction && (
+                <Button type="button" onClick={onAddPayment} disabled={busy}>
+                  <Check className="size-4" />
+                  {addPaymentLabel}
+                </Button>
+              )}
             </div>
           )}
 
           {(payments.length > 0 || canRecordPayment) && (
-            <div className="space-y-3 rounded-md border border-border/80 bg-muted/20 p-3">
+            <div className={`${formSectionClass} space-y-3`}>
               <div className="flex items-center justify-between gap-3">
-                <p className="font-medium">Payment activity</p>
-                <p className="text-sm text-muted-foreground">
-                  {payments.length === 0 ? "No payments recorded yet" : `${payments.length} payment${payments.length === 1 ? "" : "s"} recorded`}
-                </p>
+                <p className="pos-form-section-title">Payments</p>
+                <span className="text-xs text-muted-foreground">
+                  {payments.length === 0 ? "None yet" : `${payments.length} recorded`}
+                </span>
               </div>
               {payments.length === 0 ? (
-                <div className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  This record is on installments. The first payment will appear here as soon as it is saved.
-                </div>
+                <p className="text-sm text-muted-foreground">Installment payments will appear here after you record them.</p>
               ) : (
                 <div className="space-y-2">
                   {payments.map((payment, index) => (
                     <div key={String(payment.id ?? index)} className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border/80 bg-background p-3">
                       <div className="min-w-0 space-y-1">
-                        <p className="font-medium tabular-nums">{money(payment.amount)}</p>
+                        <p className="font-semibold tabular-nums">{money(payment.amount)}</p>
                         <p className="text-xs text-muted-foreground">{formatPaymentDate(payment.created_at)}</p>
                         {payment.note && <p className="text-sm text-muted-foreground">{String(payment.note)}</p>}
                       </div>
-                      <div className="text-right text-sm text-muted-foreground">
-                        {payment.payment_method ? <p>{String(payment.payment_method)}</p> : <p>No payment method</p>}
-                      </div>
+                      <p className="text-sm text-muted-foreground">{payment.payment_method ? String(payment.payment_method) : "—"}</p>
                     </div>
                   ))}
                 </div>
@@ -1083,12 +1054,12 @@ function ModeScaffold({
           )}
 
           {canAddItems && (
-            <div className="space-y-3 rounded-md border border-border/80 p-3">
-              <p className="font-medium">{addItemsTitle}</p>
+            <div className={`${formSectionClass} space-y-3`}>
+              <p className="pos-form-section-title">{addItemsTitle}</p>
               {lineInputs.map((line, index) => (
                 <div
                   key={line.id}
-                  className="grid gap-3 rounded-md border border-border/80 p-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,120px)_minmax(0,120px)_minmax(0,140px)_auto] xl:items-end"
+                  className="grid gap-3 rounded-md border border-border/70 bg-background/80 p-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,120px)_minmax(0,120px)_minmax(0,140px)_auto] xl:items-end"
                 >
                   <ProductSelect
                     label={itemLabel}
@@ -1150,7 +1121,7 @@ function ModeScaffold({
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="outline" onClick={onAddInputRow} disabled={busy}>
                   <Plus className="size-4" />
-                  Add item
+                  Add row
                 </Button>
                 <Button type="button" onClick={onAddLines} disabled={busy}>
                   <Plus className="size-4" />
@@ -1161,13 +1132,14 @@ function ModeScaffold({
           )}
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <p className="font-medium">Items in record</p>
-              <p className="text-sm text-muted-foreground">{footerText}</p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="pos-form-section-title">Line items</p>
+              {footerText && <p className="text-sm tabular-nums text-muted-foreground">{footerText}</p>}
             </div>
             {rows.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-                No items added yet.
+              <div className="pos-slip-empty">
+                <p className="pos-slip-empty-title">No items yet</p>
+                <p className="pos-slip-empty-hint">Add products using the form above.</p>
               </div>
             ) : (
               <div className="max-h-90 overflow-auto rounded-md border border-border/80">
@@ -1176,7 +1148,7 @@ function ModeScaffold({
                     <TableRow>
                       <TableHead>Product</TableHead>
                       {canAddItems && <TableHead>Variant</TableHead>}
-                      <TableHead>Total qty (kg)</TableHead>
+                      <TableHead>Qty (kg)</TableHead>
                       <TableHead>{countLabel}</TableHead>
                       <TableHead className="min-w-40">{totalLabel}</TableHead>
                       <TableHead className="text-right">Line total</TableHead>
@@ -1275,8 +1247,8 @@ function ModeScaffold({
 /** @param {{ label: string; children: React.ReactNode }} props */
 function Field({ label, children }) {
   return (
-    <div className="min-w-0 space-y-2">
-      <Label className="block truncate">{label}</Label>
+    <div className="pos-form-field min-w-0">
+      <label>{label}</label>
       {children}
     </div>
   );

@@ -1,6 +1,10 @@
 "use client";
 
-import { Package, Store, Warehouse } from "lucide-react";
+import {
+  BoxMinimalisticBoldDuotoneIcon,
+  Shop2BoldDuotoneIcon,
+  WarehouseBoldDuotoneIcon,
+} from "@/components/icons";
 
 import { Card, CardContent } from "@/components/common/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,11 +38,11 @@ export function StockTablesSection({
     <Tabs defaultValue="shop" className="w-full">
       <TabsList className="grid w-full max-w-md grid-cols-2">
         <TabsTrigger value="shop" className="gap-1.5">
-          <Store className="size-3.5" />
+          <Shop2BoldDuotoneIcon className="size-3.5" />
           Shop
         </TabsTrigger>
         <TabsTrigger value="warehouse" className="gap-1.5">
-          <Warehouse className="size-3.5" />
+          <WarehouseBoldDuotoneIcon className="size-3.5" />
           Warehouse
         </TabsTrigger>
       </TabsList>
@@ -93,7 +97,7 @@ function StockTable({ rows, total, page, pageSize, loading, locationLabel, onPag
     return (
       <Card className="mt-2">
         <CardContent className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-          <Package className="size-5" />
+          <BoxMinimalisticBoldDuotoneIcon className="size-5" />
           No stock lines in {locationLabel} yet.
         </CardContent>
       </Card>

@@ -40,7 +40,7 @@ export function AppNav({ className = "", mode = "public" }) {
         {/* Brand Logo & Workspace Select */}
         <div className="flex min-w-0 items-center gap-3">
           <Link
-            href={authed ? (admin ? "/admin" : "/app") : "/"}
+            href={authed ? (admin ? "/admin" : "/app/pos") : "/"}
             className="font-[family:var(--font-outfit),system-ui,sans-serif] shrink-0 flex items-center gap-2 text-base font-bold tracking-tight select-none"
           >
             <span className="bg-gradient-to-r from-amber-700 to-amber-800 text-amber-50 px-2.5 py-1 rounded-md text-xs tracking-wide uppercase font-extrabold shadow-sm transition-all duration-300 hover:shadow-md hover:scale-[1.02]">Al Rohani</span>
@@ -93,4 +93,3 @@ export function AppNav({ className = "", mode = "public" }) {
     </header>
   );
 }
-

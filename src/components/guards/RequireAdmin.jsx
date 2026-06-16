@@ -20,7 +20,7 @@ export function RequireAdmin({ children }) {
   useEffect(() => {
     if (!ready || !user) return;
     if (!ok) {
-      router.replace("/app");
+      router.replace("/app/pos");
     }
   }, [ready, user, ok, router]);
 
