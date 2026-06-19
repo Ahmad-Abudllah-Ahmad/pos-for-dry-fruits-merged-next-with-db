@@ -1,0 +1,394 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/lib/prisma-client"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum user_role {
+  Admin
+  user
+}
+
+enum workspace_role {
+  Admin
+  user
+}
+
+enum unit_type {
+  kg
+  gram
+}
+
+enum stock_location_type {
+  warehouse
+  shop
+}
+
+enum stock_movement_type {
+  purchase
+  transfer
+  sale
+  adjustment
+}
+
+enum purchase_status {
+  draft
+  completed
+}
+
+enum sale_status {
+  draft
+  completed
+}
+
+enum ledger_status {
+  draft
+  completed
+}
+
+enum expense_status {
+  draft
+  completed
+}
+
+enum password_reset_status {
+  pending
+  resolved
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(120)
+  cnic_number     String    @unique @db.VarChar(30)
+  phone_number    String    @unique @db.VarChar(30)
+  address         String?   @db.VarChar(255)
+  hashed_password String    @db.VarChar(255)
+  role            user_role @default(user)
+  is_active       Boolean   @default(true)
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  updated_at      DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  workspace_memberships   WorkspaceMember[]      @relation("user_memberships")
+  password_reset_requests PasswordResetRequest[] @relation("user_reset_requests")
+  created_workspaces      Workspace[]            @relation("workspace_creator")
+  created_purchases       PurchaseSlip[]         @relation("purchase_creator")
+  created_sales           Sale[]                 @relation("sale_creator")
+  created_ledger_entries  LedgerEntry[]          @relation("ledger_creator")
+  created_expenses        ExpenseEntry[]         @relation("expense_creator")
+  resolved_resets         PasswordResetRequest[] @relation("reset_resolver")
+
+  @@map("users")
+}
+
+model Workspace {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(120)
+  description   String?  @db.VarChar(255)
+  created_by_id Int?
+  created_at    DateTime @default(now()) @db.Timestamptz
+  updated_at    DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  created_by      User?              @relation("workspace_creator", fields: [created_by_id], references: [id])
+  members         WorkspaceMember[]
+  items           Item[]
+  subledgers      Subledger[]
+  stock_locations StockLocation[]
+  stock_movements StockMovement[]
+  purchase_slips  PurchaseSlip[]
+  sales           Sale[]
+  ledger_entries  LedgerEntry[]
+  expense_entries ExpenseEntry[]
+  employees       Employee[]
+  password_resets PasswordResetRequest[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id           Int            @id @default(autoincrement())
+  workspace_id Int
+  user_id      Int
+  role         workspace_role @default(user)
+  created_at   DateTime       @default(now()) @db.Timestamptz
+
+  workspace Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  user      User      @relation("user_memberships", fields: [user_id], references: [id])
+
+  @@unique([workspace_id, user_id], name: "uq_workspace_user")
+  @@map("workspace_members")
+}
+
+model Item {
+  id           Int       @id @default(autoincrement())
+  workspace_id Int
+  name         Json
+  unit_type    unit_type
+  is_active    Boolean   @default(true)
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  updated_at   DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  workspace          Workspace[]
+  subledgers         Subledger[]
+  stock_movements    StockMovement[]
+  purchase_slip_items PurchaseSlipItem[]
+  sale_items         SaleItem[]
+  ledger_entry_items LedgerEntryItem[]
+
+  @@map("items")
+}
+
+model Subledger {
+  id           Int      @id @default(autoincrement())
+  workspace_id Int
+  item_id      Int
+  name         Json
+  unit_price   Decimal? @db.Decimal(12, 2)
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  workspace          Workspace[]
+  item               Item              @relation(fields: [item_id], references: [id])
+  stock_movements    StockMovement[]
+  purchase_slip_items PurchaseSlipItem[]
+  sale_items         SaleItem[]
+  ledger_entry_items LedgerEntryItem[]
+
+  @@map("subledgers")
+}
+
+model StockLocation {
+  id           Int                 @id @default(autoincrement())
+  workspace_id Int
+  name         String              @db.VarChar(120)
+  type         stock_location_type
+  created_at   DateTime            @default(now()) @db.Timestamptz
+
+  workspace       Workspace       @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  from_movements  StockMovement[] @relation("from_location")
+  to_movements    StockMovement[] @relation("to_location")
+  purchase_slips  PurchaseSlip[]
+
+  @@unique([workspace_id, type], name: "uq_workspace_location_type")
+  @@map("stock_locations")
+}
+
+model StockMovement {
+  id               Int                 @id @default(autoincrement())
+  workspace_id     Int
+  item_id          Int
+  subledger_id     Int?
+  from_location_id Int?
+  to_location_id   Int?
+  quantity         Int?
+  quantity_grams   Int
+  type             stock_movement_type
+  reference_id     BigInt?
+  created_at       DateTime            @default(now()) @db.Timestamptz
+
+  workspace     Workspace      @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  item          Item           @relation(fields: [item_id], references: [id])
+  subledger     Subledger?     @relation(fields: [subledger_id], references: [id])
+  from_location StockLocation? @relation("from_location", fields: [from_location_id], references: [id])
+  to_location   StockLocation? @relation("to_location", fields: [to_location_id], references: [id])
+
+  @@map("stock_movements")
+}
+
+model PurchaseSlip {
+  id             Int             @id @default(autoincrement())
+  workspace_id   Int
+  supplier_name  String          @db.VarChar(120)
+  location_id    Int
+  created_by_id  Int?
+  declared_total Decimal?        @db.Decimal(12, 2)
+  total_amount   Decimal         @default(0) @db.Decimal(12, 2)
+  payment_method String?         @db.VarChar(120)
+  payment_status String          @default("installments") @db.VarChar(30)
+  status         purchase_status @default(draft)
+  created_at     DateTime        @default(now()) @db.Timestamptz
+
+  workspace  Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  location   StockLocation     @relation(fields: [location_id], references: [id])
+  created_by User?             @relation("purchase_creator", fields: [created_by_id], references: [id])
+  items      PurchaseSlipItem[]
+  payments   PurchasePayment[]
+
+  @@map("purchase_slips")
+}
+
+model PurchaseSlipItem {
+  id                   Int     @id @default(autoincrement())
+  purchase_slip_id     Int
+  item_id              Int
+  subledger_id         Int?
+  package_weight_grams Int
+  quantity             Int
+  total_weight_grams   Int
+  unit_cost            Decimal @db.Decimal(12, 6)
+  total_cost           Decimal @db.Decimal(12, 2)
+
+  purchase_slip PurchaseSlip @relation(fields: [purchase_slip_id], references: [id], onDelete: Cascade)
+  item          Item         @relation(fields: [item_id], references: [id])
+  subledger     Subledger?   @relation(fields: [subledger_id], references: [id])
+
+  @@map("purchase_slip_items")
+}
+
+model PurchasePayment {
+  id               Int      @id @default(autoincrement())
+  purchase_slip_id Int
+  amount           Decimal  @db.Decimal(12, 2)
+  payment_method   String?  @db.VarChar(120)
+  note             String?  @db.VarChar(255)
+  created_at       DateTime @default(now()) @db.Timestamptz
+
+  purchase_slip PurchaseSlip @relation(fields: [purchase_slip_id], references: [id], onDelete: Cascade)
+
+  @@map("purchase_payments")
+}
+
+model Sale {
+  id              Int         @id @default(autoincrement())
+  workspace_id    Int
+  created_by_id   Int?
+  subtotal_amount Decimal     @default(0) @db.Decimal(12, 2)
+  discount_amount Decimal     @default(0) @db.Decimal(12, 2)
+  total_amount    Decimal     @default(0) @db.Decimal(12, 2)
+  status          sale_status @default(draft)
+  created_at      DateTime    @default(now()) @db.Timestamptz
+
+  workspace  Workspace  @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  created_by User?      @relation("sale_creator", fields: [created_by_id], references: [id])
+  items      SaleItem[]
+
+  @@map("sales")
+}
+
+model SaleItem {
+  id             Int     @id @default(autoincrement())
+  sale_id        Int
+  item_id        Int
+  subledger_id   Int?
+  quantity_grams Int
+  unit_price     Decimal @db.Decimal(12, 6)
+  total_price    Decimal @db.Decimal(12, 2)
+
+  sale      Sale       @relation(fields: [sale_id], references: [id], onDelete: Cascade)
+  item      Item       @relation(fields: [item_id], references: [id])
+  subledger Subledger? @relation(fields: [subledger_id], references: [id])
+
+  @@map("sale_items")
+}
+
+model LedgerEntry {
+  id             Int           @id @default(autoincrement())
+  workspace_id   Int
+  seller_name    String        @db.VarChar(120)
+  seller_phone   String?       @db.VarChar(30)
+  notes          String?       @db.VarChar(255)
+  total_amount   Decimal       @default(0) @db.Decimal(12, 2)
+  paid_amount    Decimal       @default(0) @db.Decimal(12, 2)
+  payment_method String?       @db.VarChar(120)
+  payment_status String        @default("installments") @db.VarChar(30)
+  status         ledger_status @default(draft)
+  created_by_id  Int?
+  paid_at        DateTime?     @db.Timestamptz
+  created_at     DateTime      @default(now()) @db.Timestamptz
+  updated_at     DateTime      @default(now()) @updatedAt @db.Timestamptz
+
+  workspace  Workspace         @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  created_by User?             @relation("ledger_creator", fields: [created_by_id], references: [id])
+  items      LedgerEntryItem[]
+  payments   LedgerPayment[]
+
+  @@map("ledger_entries")
+}
+
+model LedgerEntryItem {
+  id              Int     @id @default(autoincrement())
+  ledger_entry_id Int
+  item_id         Int
+  subledger_id    Int?
+  quantity        Int     @default(1)
+  quantity_grams  Int
+  unit_price      Decimal @db.Decimal(12, 6)
+  total_price     Decimal @db.Decimal(12, 2)
+
+  ledger_entry LedgerEntry @relation(fields: [ledger_entry_id], references: [id], onDelete: Cascade)
+  item         Item        @relation(fields: [item_id], references: [id])
+  subledger    Subledger?  @relation(fields: [subledger_id], references: [id])
+
+  @@map("ledger_entry_items")
+}
+
+model LedgerPayment {
+  id              Int      @id @default(autoincrement())
+  ledger_entry_id Int
+  amount          Decimal  @db.Decimal(12, 2)
+  payment_method  String?  @db.VarChar(120)
+  note            String?  @db.VarChar(255)
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  ledger_entry LedgerEntry @relation(fields: [ledger_entry_id], references: [id], onDelete: Cascade)
+
+  @@map("ledger_payments")
+}
+
+model ExpenseEntry {
+   id             Int            @id @default(autoincrement())
+  workspace_id   Int
+  created_by_id  Int
+  category       String         @default("other") @db.VarChar(80)
+  title          String         @db.VarChar(140)
+  amount         Decimal        @db.Decimal(12, 2)
+  expense_date   DateTime       @db.Date
+  payment_method String?        @db.VarChar(120)
+  note           String?
+  status         expense_status @default(draft)
+  employee_id    Int?
+  created_at     DateTime       @default(now()) @db.Timestamptz
+
+  workspace  Workspace @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  created_by User      @relation("expense_creator", fields: [created_by_id], references: [id])
+  employee   Employee? @relation(fields: [employee_id], references: [id], onDelete: SetNull)
+
+  @@map("expense_entries")
+}
+
+model Employee {
+  id           Int      @id @default(autoincrement())
+  workspace_id Int
+  name         String   @db.VarChar(120)
+  phone_number String?  @db.VarChar(30)
+  cnic_number  String?  @db.VarChar(30)
+  address      String?  @db.VarChar(255)
+  designation  String?  @db.VarChar(120)
+  created_at   DateTime @default(now()) @db.Timestamptz
+
+  workspace       Workspace      @relation(fields: [workspace_id], references: [id], onDelete: Cascade)
+  expense_entries ExpenseEntry[]
+
+  @@map("employees")
+}
+
+model PasswordResetRequest {
+  id             Int                   @id @default(autoincrement())
+  user_id        Int
+  workspace_id   Int?
+  status         password_reset_status @default(pending)
+  message        String?               @db.VarChar(255)
+  resolved_by_id Int?
+  created_at     DateTime              @default(now()) @db.Timestamptz
+  resolved_at    DateTime?             @db.Timestamptz
+
+  user        User       @relation("user_reset_requests", fields: [user_id], references: [id])
+  workspace   Workspace? @relation(fields: [workspace_id], references: [id], onDelete: SetNull)
+  resolved_by User?      @relation("reset_resolver", fields: [resolved_by_id], references: [id], onDelete: SetNull)
+
+  @@map("password_reset_requests")
+}

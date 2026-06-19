@@ -26,8 +26,9 @@ export default function RootLayout({ children }) {
     <html
       lang="en"
       className={`${poppins.variable} ${outfit.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="h-full m-0 font-sans">
+      <body className="h-full m-0 font-sans" suppressHydrationWarning>
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

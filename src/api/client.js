@@ -16,6 +16,8 @@ class ApiError extends Error {
   }
 }
 
+export const BASE_URL = "/api/v1";
+
 /**
  * @param {string} path
  * @param {RequestOptions & { token?: string | null }} [options]

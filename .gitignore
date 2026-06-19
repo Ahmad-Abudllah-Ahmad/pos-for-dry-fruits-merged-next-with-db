@@ -63,3 +63,6 @@ Desktop.ini
 # Misc
 *.log
 .cache
+
+/src/generated/prisma
+/src/lib/prisma-client/
