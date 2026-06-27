@@ -20,10 +20,7 @@
 /coverage
 
 # Environment (secrets and local config — never commit)
-.env
-.env.*
 .env.example
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -50,7 +47,6 @@ Desktop.ini
 
 # IDE / editor
 .idea/
-.vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
 *.swp
@@ -66,3 +62,4 @@ Desktop.ini
 
 /src/generated/prisma
 /src/lib/prisma-client/
+config.bat
