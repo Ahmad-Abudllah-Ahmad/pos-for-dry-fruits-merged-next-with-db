@@ -19,11 +19,11 @@ import {
   createWorkspace,
   deactivateUser,
   deleteEmployee,
+  getMyWorkspaces,
   listEmployees,
   listItems,
   listMovements,
   listWorkspaceMembers,
-  listWorkspaces,
   listStock,
   listSubledgers,
   reactivateUser,
@@ -85,7 +85,7 @@ export function AdminDashboard() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const w = await listWorkspaces();
+      const w = await getMyWorkspaces();
       if (Array.isArray(w)) {
         setWorkspaces(w);
         if (w.length > 0 && !w.some((x) => x.id === activeWorkspaceId)) {

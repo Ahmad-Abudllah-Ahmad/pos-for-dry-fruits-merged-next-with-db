@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RefreshBoldDuotoneIcon } from "@/components/icons";
 import { toast } from "sonner";
 
-import { listItemsPage, listSubledgersPage, listWorkspaces } from "@/api";
+import { getMyWorkspaces, listItemsPage, listSubledgersPage } from "@/api";
 import { ApiError } from "@/api/client";
 import { Button } from "@/components/common/button";
 import { useWorkspaceStore } from "@/stores/workspace-store";
@@ -39,7 +39,7 @@ export function AdminItemsPage() {
   );
 
   const loadWorkspaces = useCallback(async () => {
-    const data = await listWorkspaces();
+    const data = await getMyWorkspaces();
     if (!Array.isArray(data)) return;
     setWorkspaces(data);
     if (data.length > 0 && !data.some((workspace) => workspace.id === activeWorkspaceId)) {

@@ -13,7 +13,7 @@ export function AuthPage({ view = authViews.login }) {
 
   return (
     <DefaultLayout>
-      <div className="mx-auto flex w-full justify-center">
+      <div className="mx-auto flex min-h-[calc(100svh-8rem)] w-full items-center justify-center py-4 md:py-8">
         <Auth view={safe} />
       </div>
     </DefaultLayout>

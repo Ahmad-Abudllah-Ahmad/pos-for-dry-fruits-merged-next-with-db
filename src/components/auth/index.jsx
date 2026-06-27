@@ -15,8 +15,11 @@ const VIEWS = {
  * @param {{ view?: "login" | "signup" | "forgot-password" | "bootstrap" }} props
  */
 export function Auth({ view = VIEWS.login }) {
+  const containerClass =
+    view === VIEWS.login ? "w-full max-w-6xl" : "w-full max-w-md";
+
   return (
-    <div className="w-full max-w-md">
+    <div className={containerClass}>
       {view === VIEWS.login && <Login />}
       {view === VIEWS.signup && <Signup />}
       {view === VIEWS["forgot-password"] && <ForgotPassword />}

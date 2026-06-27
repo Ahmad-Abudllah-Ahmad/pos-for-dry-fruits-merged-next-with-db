@@ -36,29 +36,26 @@ export function AppNav({ className = "", mode = "public" }) {
         .join(" ")}
     >
       <div className="flex w-full items-center justify-between gap-2 sm:px-2 2xl:px-3">
-        
-        {/* Brand Logo & Workspace Select */}
         <div className="flex min-w-0 items-center gap-3">
           <Link
             href={authed ? (admin ? "/admin" : "/app/pos") : "/"}
             className="font-[family:var(--font-outfit),system-ui,sans-serif] shrink-0 flex items-center gap-2 text-base font-bold tracking-tight select-none"
           >
-            <span className="bg-gradient-to-r from-amber-700 to-amber-800 text-amber-50 px-2.5 py-1 rounded-md text-xs tracking-wide uppercase font-extrabold shadow-sm transition-all duration-300 hover:shadow-md hover:scale-[1.02]">Al Rohani</span>
+            <span className="bg-gradient-to-r from-amber-700 to-amber-800 text-amber-50 px-2.5 py-1 rounded-md text-xs tracking-wide uppercase font-extrabold shadow-sm transition-all duration-300 hover:shadow-md hover:scale-[1.02]">
+              Al Rohani
+            </span>
             <span className="text-stone-800 font-bold hidden xs:inline tracking-tight">POS</span>
-            <span className="text-stone-400 font-semibold hidden sm:inline text-xs">| الروحانی ڈرائی فروٹس</span>
+            <span className="text-stone-400 font-semibold hidden sm:inline text-xs">
+              | الروحانی ڈرائی فروٹ
+            </span>
           </Link>
           {mode === "app" && <WorkspaceSelect />}
         </div>
 
-        {/* Navigation Action Buttons */}
         <nav className="flex flex-1 items-center justify-end gap-1.5 sm:gap-2">
           {mode === "public" && (
             <>
-              <Link
-                className={link}
-                data-active={isActive("/auth")}
-                href="/auth"
-              >
+              <Link className={link} data-active={isActive("/auth")} href="/auth">
                 <span className="inline-flex items-center gap-1.5">
                   <LogIn className="size-3.5" />
                   <span className="hidden sm:inline">Sign in</span>
@@ -69,8 +66,6 @@ export function AppNav({ className = "", mode = "public" }) {
 
           {mode === "app" && authed && (
             <>
-              {/* Redundant Navigation Links Removed: (Admin, Stock, POS, Analytics are safely handled in the dock) */}
-              
               <Button
                 type="button"
                 variant="outline"
