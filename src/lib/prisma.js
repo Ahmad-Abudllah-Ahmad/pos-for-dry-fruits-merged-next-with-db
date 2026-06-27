@@ -4,9 +4,13 @@ import { PrismaClient } from "./prisma-client/index.js";
 
 const connectionString = process.env.DATABASE_URL;
 
+if (!connectionString) {
+  throw new Error("DATABASE_URL is not configured for the server runtime.");
+}
+
 const pool = new Pool({
   connectionString,
-  max: 50, // Increase pool size for high concurrency
+  max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
